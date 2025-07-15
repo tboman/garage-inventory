@@ -153,7 +153,7 @@ function App() {
   const [itemDescription, setItemDescription] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:5000/items')
+    fetch('/items')
       .then(res => {
         if (!res.ok) {
           if (res.status === 404) {
@@ -198,7 +198,7 @@ function App() {
 
     console.log("Sending new item to server:", newItem);
 
-    fetch('http://localhost:5000/items', {
+    fetch('/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newItem)
@@ -228,7 +228,7 @@ function App() {
       });
 
       // Update backend
-      fetch(`http://localhost:5000/items/${id}`, {
+      fetch(`/items/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName, description: newDescription }),
@@ -264,7 +264,7 @@ function App() {
       });
 
       // Update backend
-      fetch(`http://localhost:5000/items/${draggedItemId}`, {
+      fetch(`/items/${draggedItemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locationId: targetLocationId, order: newOrder }),
@@ -278,7 +278,7 @@ function App() {
   };
 
   const deleteItem = (id) => {
-    fetch(`http://localhost:5000/items/${id}`, {
+    fetch(`/items/${id}`, {
       method: 'DELETE',
     })
       .then(res => {
