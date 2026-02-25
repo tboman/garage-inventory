@@ -3,7 +3,8 @@ import { uploadPhoto, addPhotoToItem } from '../api';
 
 const PhotoUpload = ({ item, onPhotoAdded, onError }) => {
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   const handleUpload = async (e) => {
     const file = e.target.files[0];
@@ -12,23 +13,29 @@ const PhotoUpload = ({ item, onPhotoAdded, onError }) => {
     setUploading(true);
     try {
       const { path } = await uploadPhoto(file);
-      // Re-read current photos from item at call time to avoid race condition;
-      // the API will PATCH with the full array, so the latest state matters.
-      // The parent's onPhotoAdded uses the functional updater so local state stays correct.
       await addPhotoToItem(item.id, item.photos || [], path);
       onPhotoAdded(item.id, path);
     } catch (err) {
       onError(err.message);
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
     }
   };
 
   return (
     <span className="photo-upload-btn">
       <input
-        ref={fileInputRef}
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleUpload}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={galleryInputRef}
         type="file"
         accept="image/*"
         onChange={handleUpload}
@@ -36,15 +43,23 @@ const PhotoUpload = ({ item, onPhotoAdded, onError }) => {
       />
       <button
         className="btn btn-outline-secondary btn-sm"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => cameraInputRef.current?.click()}
         disabled={uploading}
-        title="Add photo"
+        title="Take photo"
       >
         {uploading ? (
           <span className="spinner-border spinner-border-sm" role="status"></span>
         ) : (
           <i className="fas fa-camera"></i>
         )}
+      </button>
+      <button
+        className="btn btn-outline-secondary btn-sm ms-1"
+        onClick={() => galleryInputRef.current?.click()}
+        disabled={uploading}
+        title="Choose from gallery"
+      >
+        <i className="fas fa-images"></i>
       </button>
     </span>
   );
