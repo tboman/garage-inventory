@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { removePhotoFromItem } from '../api';
+import DriveImage from './DriveImage';
 
 const PhotoGallery = ({ item, onPhotoRemoved, onError }) => {
   const [enlarged, setEnlarged] = useState(null);
@@ -22,7 +23,7 @@ const PhotoGallery = ({ item, onPhotoRemoved, onError }) => {
       <div className="d-flex flex-wrap gap-2">
         {photos.map((photo, idx) => (
           <div key={idx} className="photo-thumb position-relative">
-            <img
+            <DriveImage
               src={photo}
               alt={`${item.name} ${idx + 1}`}
               className="rounded"
@@ -43,7 +44,7 @@ const PhotoGallery = ({ item, onPhotoRemoved, onError }) => {
       {enlarged && (
         <div className="photo-lightbox" onClick={() => setEnlarged(null)}>
           <div className="photo-lightbox-content" onClick={e => e.stopPropagation()}>
-            <img src={enlarged} alt="Enlarged" />
+            <DriveImage src={enlarged} alt="Enlarged" />
             <button
               className="btn btn-light btn-sm photo-lightbox-close"
               onClick={() => setEnlarged(null)}

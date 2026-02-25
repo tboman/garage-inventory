@@ -1,4 +1,5 @@
 import React from 'react';
+import DriveImage from './DriveImage';
 
 const SearchResults = ({ results, allItems }) => {
   const getBreadcrumb = (item) => {
@@ -32,7 +33,7 @@ const SearchResults = ({ results, allItems }) => {
           <li key={item.id} className="list-group-item search-result-item">
             <div className="d-flex align-items-center">
               {firstPhoto && (
-                <img
+                <DriveImage
                   src={firstPhoto}
                   alt={item.name}
                   className="rounded me-3"

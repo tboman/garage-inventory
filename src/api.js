@@ -1,7 +1,7 @@
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { arrayUnion, arrayRemove } from 'firebase/firestore';
-import { auth, db, storage } from './firebase';
+import { auth, db } from './firebase';
+import { uploadFileToDrive, deleteFileFromDrive, extractFileIdFromUrl } from './driveApi';
 
 function getUid() {
   const user = auth.currentUser;
@@ -47,11 +47,12 @@ export async function deleteItem(id) {
   if (snap.exists()) {
     const photos = snap.data().photos || [];
     for (const url of photos) {
+      const fileId = extractFileIdFromUrl(url);
+      if (!fileId) continue; // Legacy Firebase Storage URL — skip
       try {
-        const fileRef = ref(storage, url);
-        await deleteObject(fileRef);
+        await deleteFileFromDrive(fileId);
       } catch (e) {
-        // Photo may already be deleted; continue
+        // File may already be deleted; continue
       }
     }
   }
@@ -59,12 +60,8 @@ export async function deleteItem(id) {
 }
 
 export async function uploadPhoto(file) {
-  const uid = getUid();
-  const filePath = `users/${uid}/photos/${Date.now()}-${file.name}`;
-  const fileRef = ref(storage, filePath);
-  await uploadBytes(fileRef, file);
-  const downloadURL = await getDownloadURL(fileRef);
-  return { path: downloadURL };
+  const { viewUrl } = await uploadFileToDrive(file);
+  return { path: viewUrl };
 }
 
 export async function addPhotoToItem(itemId, _currentPhotos, photoPath) {
@@ -73,10 +70,11 @@ export async function addPhotoToItem(itemId, _currentPhotos, photoPath) {
 
 export async function removePhotoFromItem(itemId, _currentPhotos, photoPath) {
   await updateDoc(itemDoc(itemId), { photos: arrayRemove(photoPath) });
+  const fileId = extractFileIdFromUrl(photoPath);
+  if (!fileId) return; // Legacy Firebase Storage URL — skip
   try {
-    const fileRef = ref(storage, photoPath);
-    await deleteObject(fileRef);
+    await deleteFileFromDrive(fileId);
   } catch (e) {
-    // Photo may already be deleted
+    // File may already be deleted
   }
 }
