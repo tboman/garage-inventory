@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "hunapuka-34ce6"
+  },
+  "targets": {
+    "hunapuka-34ce6": {
+      "hosting": {
+        "hunapuka": ["hunapuka-34ce6"],
+        "storageloot": ["storageloot-shop"]
+      }
+    }
+  }
+}

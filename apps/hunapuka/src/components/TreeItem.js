@@ -164,6 +164,21 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
                 <i className="fas fa-plus"></i>
               </button>
               <PhotoUpload item={item} onPhotoAdded={onPhotoAdded} onError={onError} />
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                title="Sell on StorageLoot"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    title: item.name,
+                    description: item.description || '',
+                    photos: JSON.stringify(item.photos || []),
+                    sourceItemId: item.id,
+                  });
+                  window.open(`https://storageloot.shop/import?${params.toString()}`, '_blank');
+                }}
+              >
+                &#x1F4B2;
+              </button>
               <button className="btn btn-outline-secondary btn-sm" onClick={() => setIsEditing(true)} title="Edit">
                 <i className="fas fa-edit"></i>
               </button>
