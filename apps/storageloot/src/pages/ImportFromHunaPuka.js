@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '../hooks/useAuth';
 import { functions } from '../firebase';
+import { getGoogleAccessToken } from '../googleToken';
 import ListingForm from '../components/ListingForm';
 
 export default function ImportFromHunaPuka() {
@@ -24,15 +25,6 @@ export default function ImportFromHunaPuka() {
     drivePhotos = [];
   }
 
-  // Get Google access token from the auth flow for Drive API access
-  const [accessToken, setAccessToken] = useState(null);
-  useEffect(() => {
-    if (user) {
-      const token = sessionStorage.getItem('google_access_token');
-      setAccessToken(token);
-    }
-  }, [user]);
-
   if (authLoading) {
     return <div className="loading-spinner"><div className="spinner-border text-secondary" /></div>;
   }
@@ -50,9 +42,15 @@ export default function ImportFromHunaPuka() {
   const handleSubmit = async (data) => {
     setPublishing(true);
     setError(null);
-    setStatus('Copying photos from Google Drive...');
 
     try {
+      setStatus('Getting Drive access...');
+      const accessToken = await getGoogleAccessToken();
+      if (!accessToken) {
+        throw new Error('Could not obtain Google Drive access token. Please sign in again.');
+      }
+
+      setStatus('Copying photos from Google Drive...');
       const exportListing = httpsCallable(functions, 'exportListing');
       const result = await exportListing({
         title: data.title,
@@ -61,6 +59,7 @@ export default function ImportFromHunaPuka() {
         currency: data.currency || 'USD',
         condition: data.condition,
         category: data.category,
+        groupId: data.groupId,
         externalLinks: data.externalLinks,
         drivePhotoUrls: drivePhotos,
         accessToken,

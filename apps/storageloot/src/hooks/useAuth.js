@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
+import { storeGoogleToken, clearGoogleToken } from '../googleToken';
 
 const AuthContext = createContext(null);
 
@@ -12,11 +13,20 @@ export function AuthProvider({ children }) {
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+      if (!u) clearGoogleToken();
     });
   }, []);
 
-  const login = () => signInWithPopup(auth, googleProvider);
-  const logout = () => signOut(auth);
+  const login = async () => {
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    storeGoogleToken(credential);
+    return result;
+  };
+  const logout = async () => {
+    clearGoogleToken();
+    await signOut(auth);
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
