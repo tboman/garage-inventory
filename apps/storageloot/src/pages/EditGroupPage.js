@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { getGroup, updateGroup } from '../api';
+import { getGroup, updateGroup, uploadGroupPhoto, removeGroupPhoto } from '../api';
 import GroupForm from '../components/GroupForm';
 
 export default function EditGroupPage() {
@@ -49,11 +49,19 @@ export default function EditGroupPage() {
     );
   }
 
-  const handleSubmit = async (data) => {
+  const handleSubmit = async ({ photoFile, removeExistingPhoto, ...data }) => {
     setSaving(true);
     setError(null);
     try {
-      await updateGroup(group.id, data);
+      if (photoFile) {
+        const url = await uploadGroupPhoto(group.id, photoFile);
+        await updateGroup(group.id, { ...data, photo: url });
+      } else if (removeExistingPhoto && group.photo) {
+        await removeGroupPhoto(group.id, group.photo);
+        await updateGroup(group.id, { ...data, photo: null });
+      } else {
+        await updateGroup(group.id, data);
+      }
       navigate(`/group/${group.id}`);
     } catch (err) {
       setError(err.message);
@@ -66,7 +74,7 @@ export default function EditGroupPage() {
       <h2 className="fw-bold mb-4">Edit Group</h2>
       {error && <div className="alert alert-danger">{error}</div>}
       <GroupForm
-        initial={{ name: group.name, type: group.type, description: group.description }}
+        initial={{ name: group.name, type: group.type, description: group.description, photo: group.photo }}
         onSubmit={handleSubmit}
         loading={saving}
         submitLabel="Save Changes"

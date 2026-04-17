@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getListing, updateListing } from '../api';
+import { getListing, updateListing, removeListingPhoto } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useMyGroups } from '../hooks/useGroups';
 import StatusBadge from '../components/StatusBadge';
@@ -39,6 +39,7 @@ export default function ListingPage() {
   const [groupId, setGroupId] = useState('');
   const [savingGroup, setSavingGroup] = useState(false);
   const [groupMsg, setGroupMsg] = useState(null);
+  const [removingPhoto, setRemovingPhoto] = useState(null);
 
   useEffect(() => {
     setGroupId(listing?.groupId || '');
@@ -82,6 +83,21 @@ export default function ListingPage() {
   };
 
   const groupChanged = (listing.groupId || '') !== (groupId || '');
+
+  const handleRemovePhoto = async (url) => {
+    if (!window.confirm('Remove this photo from the listing?')) return;
+    setRemovingPhoto(url);
+    try {
+      const remaining = photos.filter(p => p !== url);
+      await removeListingPhoto(listing.id, url, remaining);
+      setListing(prev => ({ ...prev, photos: remaining }));
+      setSelectedPhoto(0);
+    } catch (e) {
+      alert(`Failed to remove photo: ${e.message}`);
+    } finally {
+      setRemovingPhoto(null);
+    }
+  };
 
   return (
     <div className="container py-4 listing-detail">
@@ -174,6 +190,29 @@ export default function ListingPage() {
                   <a href={hunapukaUrl} target="_blank" rel="noopener noreferrer" className="btn btn-outline-secondary btn-sm">
                     Open original HunaPuka item &rarr;
                   </a>
+                </div>
+              )}
+
+              {photos.length > 0 && (
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small mb-1">Photos</label>
+                  <div className="photo-upload-grid">
+                    {photos.map(url => (
+                      <div key={url} className="photo-upload-thumb">
+                        <img src={url} alt="" />
+                        <button
+                          type="button"
+                          className="remove-btn"
+                          onClick={() => handleRemovePhoto(url)}
+                          disabled={removingPhoto === url}
+                          aria-label="Remove photo"
+                          title="Remove photo"
+                        >
+                          {removingPhoto === url ? '…' : '×'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

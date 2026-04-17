@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import PhotoPreview from './PhotoPreview';
+import GooglePhotosPickerButton from './GooglePhotosPickerButton';
 
 const conditions = [
   { value: 'new', label: 'New' },
@@ -54,16 +55,18 @@ export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Pub
     setExternalLinks(externalLinks.filter((_, idx) => idx !== i));
   };
 
-  const handlePhotoSelect = (e) => {
-    const files = Array.from(e.target.files);
+  const addFiles = (files) => {
     const remaining = 10 - photoUrls.length - photoFiles.length;
     const toAdd = files.slice(0, remaining);
-
     setPhotoFiles(prev => [...prev, ...toAdd]);
     toAdd.forEach(f => {
       const url = URL.createObjectURL(f);
       setPhotoUrls(prev => [...prev, url]);
     });
+  };
+
+  const handlePhotoSelect = (e) => {
+    addFiles(Array.from(e.target.files));
     e.target.value = '';
   };
 
@@ -170,9 +173,14 @@ export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Pub
         <label className="form-label fw-semibold">Photos (max 10)</label>
         <PhotoPreview photos={photoUrls} onRemove={handleRemovePhoto} />
         {photoUrls.length < 10 && (
-          <button type="button" className="btn btn-outline-secondary btn-sm mt-2" onClick={() => fileInput.current.click()}>
-            + Add Photos
-          </button>
+          <div className="d-flex gap-2 mt-2 flex-wrap">
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => fileInput.current.click()}>
+              + Add Photos
+            </button>
+            <GooglePhotosPickerButton
+              onPicked={(files) => addFiles(files)}
+            />
+          </div>
         )}
         <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />
       </div>

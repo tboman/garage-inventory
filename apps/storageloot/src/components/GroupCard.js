@@ -17,13 +17,19 @@ const typeImages = {
 };
 
 export default function GroupCard({ group }) {
-  const image = typeImages[group.type] || typeImages.custom;
+  const customPhoto = group.photo;
+  const image = customPhoto || typeImages[group.type] || typeImages.custom;
   const label = typeLabels[group.type] || 'Custom';
 
   return (
     <Link to={`/group/${group.id}`} className="text-decoration-none">
       <div className="card group-card h-100">
-        <img src={image} alt={label} className="card-img-top" />
+        <img
+          src={image}
+          alt={label}
+          className="card-img-top"
+          style={customPhoto ? undefined : { objectFit: 'contain', padding: '1rem', background: '#f8f9fa' }}
+        />
         <div className="card-body">
           <div className="group-name text-dark">{group.name}</div>
           <div className="d-flex gap-1 mt-1">

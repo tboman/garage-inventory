@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { createGroup } from '../api';
+import { createGroup, uploadGroupPhoto, updateGroup } from '../api';
 import GroupForm from '../components/GroupForm';
 
 export default function CreateGroupPage() {
@@ -28,11 +28,15 @@ export default function CreateGroupPage() {
     );
   }
 
-  const handleSubmit = async (data) => {
+  const handleSubmit = async ({ photoFile, removeExistingPhoto, ...data }) => {
     setSaving(true);
     setError(null);
     try {
       const id = await createGroup(data, user);
+      if (photoFile) {
+        const url = await uploadGroupPhoto(id, photoFile);
+        await updateGroup(id, { name: data.name, type: data.type, description: data.description, photo: url });
+      }
       navigate(`/group/${id}`);
     } catch (err) {
       setError(err.message);

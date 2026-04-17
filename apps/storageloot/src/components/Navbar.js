@@ -12,33 +12,14 @@ export default function Navbar() {
           <span className="navbar-toggler-icon"></span>
         </button>
         <div className="collapse navbar-collapse" id="navbarNav">
-          <ul className="navbar-nav me-auto">
-            <li className="nav-item">
-              <Link className="nav-link" to="/">Browse</Link>
-            </li>
-            {user && (
-              <>
-                <li className="nav-item">
-                  <Link className="nav-link" to="/groups/create">New Group</Link>
-                </li>
-                <li className="nav-item">
-                  <Link className="nav-link" to="/create">Sell an Item</Link>
-                </li>
-                <li className="nav-item">
-                  <Link className="nav-link" to="/my-groups">My Groups</Link>
-                </li>
-                <li className="nav-item">
-                  <Link className="nav-link" to="/my-listings">My Listings</Link>
-                </li>
-              </>
-            )}
-          </ul>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 ms-auto flex-wrap">
             {user ? (
               <>
                 <span className="text-light small d-none d-md-inline">
                   {user.displayName || user.email}
                 </span>
+                <Link className="nav-link px-2" to="/my-groups">My Groups</Link>
+                <Link className="nav-link px-2" to="/my-listings">My Listings</Link>
                 <button className="btn btn-outline-light btn-sm" onClick={logout}>
                   Sign Out
                 </button>

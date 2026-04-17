@@ -102,6 +102,29 @@ export async function uploadListingPhoto(listingId, file) {
   return getDownloadURL(storageRef);
 }
 
+function storagePathFromUrl(url) {
+  const gcs = url.match(/^https:\/\/storage\.googleapis\.com\/[^/]+\/(.+?)(\?.*)?$/);
+  if (gcs) return decodeURIComponent(gcs[1]);
+  const fb = url.match(/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/([^?]+)/);
+  if (fb) return decodeURIComponent(fb[1]);
+  return null;
+}
+
+export async function removeListingPhoto(listingId, photoUrl, remainingPhotos) {
+  await updateDoc(doc(db, 'listings', listingId), {
+    photos: remainingPhotos,
+    updatedAt: serverTimestamp(),
+  });
+  const path = storagePathFromUrl(photoUrl);
+  if (path) {
+    try {
+      await deleteObject(ref(storage, path));
+    } catch (e) {
+      // Ignore - file may already be gone or not in our bucket
+    }
+  }
+}
+
 export async function createGroup(data, user) {
   const group = {
     ownerId: user.uid,
@@ -148,4 +171,26 @@ export async function updateGroup(id, data) {
 
 export async function deleteGroup(id) {
   await deleteDoc(doc(db, 'groups', id));
+}
+
+export async function uploadGroupPhoto(groupId, file) {
+  const filename = `${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, `groups/${groupId}/${filename}`);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
+export async function removeGroupPhoto(groupId, photoUrl) {
+  await updateDoc(doc(db, 'groups', groupId), {
+    photo: null,
+    updatedAt: serverTimestamp(),
+  });
+  const path = storagePathFromUrl(photoUrl);
+  if (path) {
+    try {
+      await deleteObject(ref(storage, path));
+    } catch (e) {
+      // Ignore - file may already be gone
+    }
+  }
 }

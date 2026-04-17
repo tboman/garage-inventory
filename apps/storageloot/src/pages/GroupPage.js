@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getGroup, getListingsByGroup } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import ListingGrid from '../components/ListingGrid';
+import AddExistingItemsModal from '../components/AddExistingItemsModal';
 
 const typeLabels = {
   container: 'Container',
@@ -27,6 +28,12 @@ export default function GroupPage() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showAddExisting, setShowAddExisting] = useState(false);
+
+  const refetchListings = useCallback(async () => {
+    const l = await getListingsByGroup(id);
+    setListings(l);
+  }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -68,7 +75,8 @@ export default function GroupPage() {
     );
   }
 
-  const image = typeImages[group.type] || typeImages.custom;
+  const customPhoto = group.photo;
+  const image = customPhoto || typeImages[group.type] || typeImages.custom;
   const label = typeLabels[group.type] || 'Custom';
   const isOwner = !!user && user.uid === group.ownerId;
 
@@ -76,7 +84,12 @@ export default function GroupPage() {
     <div className="container py-4">
       <div className="row align-items-center mb-4">
         <div className="col-sm-4 mb-3 mb-sm-0">
-          <img src={image} alt={label} className="img-fluid rounded" />
+          <img
+            src={image}
+            alt={label}
+            className="img-fluid rounded"
+            style={customPhoto ? { width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' } : undefined}
+          />
         </div>
         <div className="col-sm-8">
           <div className="d-flex justify-content-between align-items-start">
@@ -101,10 +114,27 @@ export default function GroupPage() {
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h3 className="fw-bold mb-0">Items in this group</h3>
         {isOwner && (
-          <Link to={`/create?groupId=${group.id}`} className="btn btn-sl btn-sm">+ Add Item</Link>
+          <div className="d-flex gap-2">
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setShowAddExisting(true)}
+            >
+              Add Existing Items
+            </button>
+            <Link to={`/create?groupId=${group.id}`} className="btn btn-sl btn-sm">+ Add Item</Link>
+          </div>
         )}
       </div>
       <ListingGrid listings={listings} />
+
+      {showAddExisting && isOwner && (
+        <AddExistingItemsModal
+          userId={user.uid}
+          groupId={group.id}
+          onClose={() => setShowAddExisting(false)}
+          onAdded={refetchListings}
+        />
+      )}
     </div>
   );
 }
