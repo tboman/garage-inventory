@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getGroup, getListingsByGroup } from '../api';
+import { useAuth } from '../hooks/useAuth';
 import ListingGrid from '../components/ListingGrid';
 
 const typeLabels = {
@@ -21,6 +22,7 @@ const typeImages = {
 
 export default function GroupPage() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [group, setGroup] = useState(null);
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,7 @@ export default function GroupPage() {
 
   const image = typeImages[group.type] || typeImages.custom;
   const label = typeLabels[group.type] || 'Custom';
+  const isOwner = !!user && user.uid === group.ownerId;
 
   return (
     <div className="container py-4">
@@ -85,7 +88,12 @@ export default function GroupPage() {
         </div>
       </div>
 
-      <h3 className="fw-bold mb-3">Items in this group</h3>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3 className="fw-bold mb-0">Items in this group</h3>
+        {isOwner && (
+          <Link to={`/create?groupId=${group.id}`} className="btn btn-sl btn-sm">+ Add Item</Link>
+        )}
+      </div>
       <ListingGrid listings={listings} />
     </div>
   );

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getListing } from '../api';
+import { getListing, updateListing } from '../api';
+import { useAuth } from '../hooks/useAuth';
+import { useMyGroups } from '../hooks/useGroups';
 import StatusBadge from '../components/StatusBadge';
 import ExternalLinks from '../components/ExternalLinks';
 
@@ -18,6 +20,7 @@ function formatPrice(cents) {
 
 export default function ListingPage() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
@@ -29,6 +32,17 @@ export default function ListingPage() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [id]);
+
+  const isOwner = !!user && !!listing && user.uid === listing.sellerId;
+  const { groups: myGroups } = useMyGroups(isOwner ? user.uid : null);
+
+  const [groupId, setGroupId] = useState('');
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [groupMsg, setGroupMsg] = useState(null);
+
+  useEffect(() => {
+    setGroupId(listing?.groupId || '');
+  }, [listing]);
 
   if (loading) {
     return (
@@ -49,6 +63,25 @@ export default function ListingPage() {
 
   const photos = listing.photos || [];
   const mainPhoto = photos[selectedPhoto] || null;
+  const hunapukaUrl = listing.sourceItemId
+    ? `https://hunapuka.com/?id=${encodeURIComponent(listing.sourceItemId)}`
+    : null;
+
+  const handleSaveGroup = async () => {
+    setSavingGroup(true);
+    setGroupMsg(null);
+    try {
+      await updateListing(listing.id, { groupId: groupId || null });
+      setListing(prev => ({ ...prev, groupId: groupId || null }));
+      setGroupMsg({ type: 'success', text: 'Group updated.' });
+    } catch (e) {
+      setGroupMsg({ type: 'danger', text: e.message });
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const groupChanged = (listing.groupId || '') !== (groupId || '');
 
   return (
     <div className="container py-4 listing-detail">
@@ -103,6 +136,12 @@ export default function ListingPage() {
                 <td className="text-muted">Seller</td>
                 <td>{listing.sellerDisplayName}</td>
               </tr>
+              {listing.groupId && (
+                <tr>
+                  <td className="text-muted">Group</td>
+                  <td><Link to={`/group/${listing.groupId}`}>View group</Link></td>
+                </tr>
+              )}
               {listing.createdAt && (
                 <tr>
                   <td className="text-muted">Listed</td>
@@ -123,6 +162,47 @@ export default function ListingPage() {
             <div className="mb-4">
               <h5 className="fw-semibold">Buy it on</h5>
               <ExternalLinks links={listing.externalLinks} />
+            </div>
+          )}
+
+          {isOwner && (
+            <div className="border rounded p-3 mb-3 bg-light">
+              <h6 className="fw-semibold mb-2">Seller tools</h6>
+
+              {hunapukaUrl && (
+                <div className="mb-3">
+                  <a href={hunapukaUrl} target="_blank" rel="noopener noreferrer" className="btn btn-outline-secondary btn-sm">
+                    Open original HunaPuka item &rarr;
+                  </a>
+                </div>
+              )}
+
+              <label className="form-label fw-semibold small mb-1">Group</label>
+              <div className="d-flex gap-2">
+                <select
+                  className="form-select form-select-sm"
+                  value={groupId}
+                  onChange={e => setGroupId(e.target.value)}
+                  disabled={savingGroup}
+                >
+                  <option value="">None</option>
+                  {myGroups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-sl btn-sm"
+                  onClick={handleSaveGroup}
+                  disabled={!groupChanged || savingGroup}
+                >
+                  {savingGroup ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              {groupMsg && (
+                <div className={`alert alert-${groupMsg.type} alert-sm py-1 px-2 mt-2 mb-0 small`}>
+                  {groupMsg.text}
+                </div>
+              )}
             </div>
           )}
         </div>
