@@ -89,6 +89,37 @@ body {
   gap: 1.25rem;
 }
 
+/* Group Cards */
+.group-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.group-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.group-card .card-img-top {
+  height: 200px;
+  object-fit: cover;
+  background-color: #e9ecef;
+}
+
+.group-card .card-body {
+  padding: 0.75rem;
+}
+
+.group-card .group-name {
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Listing Detail */
 .listing-detail .photo-gallery {
   display: grid;

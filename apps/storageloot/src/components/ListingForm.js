@@ -28,12 +28,13 @@ const platforms = [
   { value: 'other', label: 'Other' },
 ];
 
-export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Publish Listing', loading = false, photoUrls: initialPhotoUrls }) {
+export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Publish Listing', loading = false, photoUrls: initialPhotoUrls, myGroups = [] }) {
   const [title, setTitle] = useState(initial.title || '');
   const [description, setDescription] = useState(initial.description || '');
   const [priceDollars, setPriceDollars] = useState(initial.price ? (initial.price / 100).toFixed(2) : '');
   const [condition, setCondition] = useState(initial.condition || 'good');
   const [category, setCategory] = useState(initial.category || 'other');
+  const [groupId, setGroupId] = useState(initial.groupId || '');
   const [externalLinks, setExternalLinks] = useState(initial.externalLinks || []);
   const [photoFiles, setPhotoFiles] = useState([]);
   const [photoUrls, setPhotoUrls] = useState(initialPhotoUrls || initial.photos || []);
@@ -85,6 +86,7 @@ export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Pub
       currency: 'USD',
       condition,
       category,
+      groupId: groupId || null,
       externalLinks: externalLinks.filter(l => l.url.trim()),
       photoFiles,
       existingPhotos: initialPhotoUrls || initial.photos || [],
@@ -151,6 +153,17 @@ export default function ListingForm({ initial = {}, onSubmit, submitLabel = 'Pub
             {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="form-label fw-semibold">Group <span className="text-muted fw-normal">(optional)</span></label>
+        <select className="form-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
+          <option value="">None</option>
+          {myGroups.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+        <div className="form-text">Assign this listing to one of your groups so it shows on the home page.</div>
       </div>
 
       <div className="mb-3">

@@ -1,14 +1,19 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { createListing, uploadListingPhoto } from '../api';
+import { useMyGroups } from '../hooks/useGroups';
 import ListingForm from '../components/ListingForm';
 
 export default function CreateListingPage() {
   const { user, login, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { groups: myGroups } = useMyGroups(user?.uid);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState(null);
+
+  const initialGroupId = searchParams.get('groupId') || '';
 
   if (authLoading) {
     return (
@@ -40,6 +45,7 @@ export default function CreateListingPage() {
         currency: data.currency,
         condition: data.condition,
         category: data.category,
+        groupId: data.groupId,
         externalLinks: data.externalLinks,
         photos: [],
       }, user);
@@ -67,7 +73,12 @@ export default function CreateListingPage() {
     <div className="container py-4" style={{ maxWidth: 700 }}>
       <h2 className="fw-bold mb-4">Create Listing</h2>
       {error && <div className="alert alert-danger">{error}</div>}
-      <ListingForm onSubmit={handleSubmit} loading={publishing} />
+      <ListingForm
+        onSubmit={handleSubmit}
+        loading={publishing}
+        myGroups={myGroups}
+        initial={{ groupId: initialGroupId }}
+      />
     </div>
   );
 }

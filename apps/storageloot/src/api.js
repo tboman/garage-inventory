@@ -6,6 +6,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebas
 import { db, storage } from './firebase';
 
 const listingsRef = collection(db, 'listings');
+const groupsRef = collection(db, 'groups');
 
 function generateKeywords(title) {
   return title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -28,6 +29,7 @@ export async function createListing(data, user) {
     externalLinks: data.externalLinks || [],
     status: 'active',
     sourceItemId: data.sourceItemId || null,
+    groupId: data.groupId || null,
     titleLower: data.title.toLowerCase(),
     keywords: generateKeywords(data.title),
     createdAt: serverTimestamp(),
@@ -98,4 +100,51 @@ export async function uploadListingPhoto(listingId, file) {
   const storageRef = ref(storage, `listings/${listingId}/${filename}`);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);
+}
+
+export async function createGroup(data, user) {
+  const group = {
+    ownerId: user.uid,
+    ownerDisplayName: user.displayName || 'Anonymous',
+    name: data.name,
+    type: data.type,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  const docRef = await addDoc(groupsRef, group);
+  return docRef.id;
+}
+
+export async function getGroup(id) {
+  const snap = await getDoc(doc(db, 'groups', id));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function getGroups({ pageSize = 20, lastDoc } = {}) {
+  const constraints = [orderBy('createdAt', 'desc'), limit(pageSize)];
+  if (lastDoc) constraints.push(startAfter(lastDoc));
+  const q = query(groupsRef, ...constraints);
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function getMyGroups(userId) {
+  const q = query(groupsRef, where('ownerId', '==', userId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function getListingsByGroup(groupId) {
+  const q = query(listingsRef, where('groupId', '==', groupId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function updateGroup(id, data) {
+  await updateDoc(doc(db, 'groups', id), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function deleteGroup(id) {
+  await deleteDoc(doc(db, 'groups', id));
 }

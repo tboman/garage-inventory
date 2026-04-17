@@ -1,17 +1,29 @@
 import { useState, useCallback } from 'react';
 import { useListings } from '../hooks/useListings';
+import { useGroups } from '../hooks/useGroups';
 import ListingGrid from '../components/ListingGrid';
+import GroupGrid from '../components/GroupGrid';
 import SearchBar from '../components/SearchBar';
 import CategoryFilter from '../components/CategoryFilter';
 
 export default function HomePage() {
   const [category, setCategory] = useState('all');
   const [searchKeyword, setSearchKeyword] = useState(null);
-  const { listings, loading, error } = useListings({ category: category === 'all' ? null : category, searchKeyword });
+
+  const isFiltering = !!searchKeyword || category !== 'all';
+
+  const { listings, loading: listingsLoading, error: listingsError } = useListings({
+    category: category === 'all' ? null : category,
+    searchKeyword,
+  });
+  const { groups, loading: groupsLoading, error: groupsError } = useGroups({ pageSize: 20 });
 
   const handleSearch = useCallback((keyword) => {
     setSearchKeyword(keyword);
   }, []);
+
+  const loading = isFiltering ? listingsLoading : groupsLoading;
+  const error = isFiltering ? listingsError : groupsError;
 
   return (
     <div className="container py-4">
@@ -36,8 +48,10 @@ export default function HomePage() {
             <span className="visually-hidden">Loading...</span>
           </div>
         </div>
-      ) : (
+      ) : isFiltering ? (
         <ListingGrid listings={listings} />
+      ) : (
+        <GroupGrid groups={groups} />
       )}
     </div>
   );

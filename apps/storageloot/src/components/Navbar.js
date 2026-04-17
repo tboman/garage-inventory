@@ -19,7 +19,13 @@ export default function Navbar() {
             {user && (
               <>
                 <li className="nav-item">
+                  <Link className="nav-link" to="/groups/create">New Group</Link>
+                </li>
+                <li className="nav-item">
                   <Link className="nav-link" to="/create">Sell an Item</Link>
+                </li>
+                <li className="nav-item">
+                  <Link className="nav-link" to="/my-groups">My Groups</Link>
                 </li>
                 <li className="nav-item">
                   <Link className="nav-link" to="/my-listings">My Listings</Link>
@@ -34,6 +40,7 @@ export default function Navbar() {
                   {user.displayName || user.email}
                 </button>
                 <ul className="dropdown-menu dropdown-menu-end">
+                  <li><Link className="dropdown-item" to="/my-groups">My Groups</Link></li>
                   <li><Link className="dropdown-item" to="/my-listings">My Listings</Link></li>
                   <li><hr className="dropdown-divider" /></li>
                   <li><button className="dropdown-item" onClick={logout}>Sign Out</button></li>

@@ -7,6 +7,9 @@ import ListingPage from './pages/ListingPage';
 import CreateListingPage from './pages/CreateListingPage';
 import MyListingsPage from './pages/MyListingsPage';
 import ImportFromHunaPuka from './pages/ImportFromHunaPuka';
+import CreateGroupPage from './pages/CreateGroupPage';
+import GroupPage from './pages/GroupPage';
+import MyGroupsPage from './pages/MyGroupsPage';
 
 function App() {
   return (
@@ -21,6 +24,9 @@ function App() {
               <Route path="/create" element={<CreateListingPage />} />
               <Route path="/my-listings" element={<MyListingsPage />} />
               <Route path="/import" element={<ImportFromHunaPuka />} />
+              <Route path="/groups/create" element={<CreateGroupPage />} />
+              <Route path="/group/:id" element={<GroupPage />} />
+              <Route path="/my-groups" element={<MyGroupsPage />} />
               <Route path="*" element={
                 <div className="container py-5 text-center">
                   <h1>404</h1>
