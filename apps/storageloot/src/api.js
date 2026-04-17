@@ -108,6 +108,7 @@ export async function createGroup(data, user) {
     ownerDisplayName: user.displayName || 'Anonymous',
     name: data.name,
     type: data.type,
+    description: data.description || '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };

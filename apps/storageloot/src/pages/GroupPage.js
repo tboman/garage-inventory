@@ -79,12 +79,22 @@ export default function GroupPage() {
           <img src={image} alt={label} className="img-fluid rounded" />
         </div>
         <div className="col-sm-8">
-          <h1 className="fw-bold mb-1">{group.name}</h1>
+          <div className="d-flex justify-content-between align-items-start">
+            <h1 className="fw-bold mb-1">{group.name}</h1>
+            {isOwner && (
+              <Link to={`/group/${group.id}/edit`} className="btn btn-outline-secondary btn-sm">
+                Edit
+              </Link>
+            )}
+          </div>
           <div className="mb-2">
             <span className="badge bg-light text-dark border">{label}</span>
           </div>
           <div className="text-muted">by {group.ownerDisplayName || 'Anonymous'}</div>
           <div className="text-muted small">{listings.length} item{listings.length === 1 ? '' : 's'}</div>
+          {group.description && (
+            <p className="mt-2 mb-0" style={{ whiteSpace: 'pre-wrap' }}>{group.description}</p>
+          )}
         </div>
       </div>
 
