@@ -33,19 +33,16 @@ export default function Navbar() {
               </>
             )}
           </ul>
-          <div className="d-flex align-items-center">
+          <div className="d-flex align-items-center gap-2">
             {user ? (
-              <div className="dropdown">
-                <button className="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+              <>
+                <span className="text-light small d-none d-md-inline">
                   {user.displayName || user.email}
+                </span>
+                <button className="btn btn-outline-light btn-sm" onClick={logout}>
+                  Sign Out
                 </button>
-                <ul className="dropdown-menu dropdown-menu-end">
-                  <li><Link className="dropdown-item" to="/my-groups">My Groups</Link></li>
-                  <li><Link className="dropdown-item" to="/my-listings">My Listings</Link></li>
-                  <li><hr className="dropdown-divider" /></li>
-                  <li><button className="dropdown-item" onClick={logout}>Sign Out</button></li>
-                </ul>
-              </div>
+              </>
             ) : (
               <button className="btn btn-outline-light btn-sm" onClick={login}>
                 Sign in with Google
