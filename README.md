@@ -1,70 +1,38 @@
-# Getting Started with Create React App
+This monorepo is a sophisticated, "agent-ready" ecosystem for inventory and marketplace management, built on a
+  Firebase backbone. Here is the architectural analysis of its three primary services:
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+  1. Hunapuka (apps/hunapuka)
+   * Purpose: A private inventory management tool.
+   * Key Tech: React 19, Firebase (Auth/Firestore), and Google Drive API.
+   * Unique Logic: Unlike typical apps, it stores item photos in the user's personal Google Drive rather than a central
+     bucket. This reinforces a "private ownership" model for the user's personal data.
+   * Interactions: It acts as the "source of truth" for items before they are listed for sale.
 
-## Available Scripts
+  2. StorageLoot (apps/storageloot)
+   * Purpose: A public marketplace for selling items on platforms like eBay and Craigslist.
+   * Key Tech: React 19, Firebase Storage, and React Router.
+   * Interoperability: It features a deep integration with Hunapuka. The ImportFromHunaPuka logic allows users to
+     "promote" private inventory items to public listings. This process triggers a backend workflow that copies photos
+     from the user's Google Drive into the marketplace's infrastructure.
+   * eBay Integration: Uses Firebase Functions to handle OAuth linking and exporting listings directly to eBay.
 
-In the project directory, you can run:
+  3. MCP Server (services/mcp)
+   * Purpose: A Model Context Protocol server that exposes StorageLoot's capabilities to AI agents (like Claude).
+   * Key Tech: Node.js (TypeScript), Express, and OIDC (OpenID Connect).
+   * Strategic Role: This service makes the entire ecosystem "agentic." By implementing a full OIDC flow (Authorization
+     Code + PKCE), it allows AI agents to securely authenticate as a user.
+   * Capabilities: It mints JWTs that bridge Firebase UIDs with eBay identities, enabling an agent to manage a user's
+     marketplace presence programmatically.
 
-### `npm start`
+  Backend Logic (functions)
+  The functions directory serves as the integration hub. It handles:
+   * eBay API: XML parsing and secure token management for eBay's specialized APIs.
+   * Cross-App Workflows: The exportListing function is the bridge that moves data and media between the private
+     (Hunapuka) and public (StorageLoot) domains.
+   * Auth Bridging: Functions like mintAuthorizationCode support the OIDC flow used by the MCP server.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+  Summary
+  The monorepo follows a "Private-to-Public" pipeline:
+   1. Capture in Hunapuka (Private/Drive).
+   2. Import to StorageLoot (Public/Marketplace).
+   3. Manage via AI Agents (MCP/OIDC).
