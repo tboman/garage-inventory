@@ -111,6 +111,7 @@ export default function MyListingsPage() {
                   <td><StatusBadge status={listing.status} /></td>
                   <td>
                     <div className="btn-group btn-group-sm">
+                      <Link className="btn btn-outline-secondary" to={`/listing/${listing.id}/edit`}>Edit</Link>
                       {listing.status === 'active' && (
                         <button className="btn btn-outline-success" onClick={() => handleMarkSold(listing.id)}>Mark Sold</button>
                       )}

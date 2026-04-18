@@ -8,7 +8,7 @@ import { db, storage } from './firebase';
 const listingsRef = collection(db, 'listings');
 const groupsRef = collection(db, 'groups');
 
-function generateKeywords(title) {
+export function generateKeywords(title) {
   return title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 }
 
@@ -108,6 +108,16 @@ function storagePathFromUrl(url) {
   const fb = url.match(/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/([^?]+)/);
   if (fb) return decodeURIComponent(fb[1]);
   return null;
+}
+
+export async function deleteListingPhotoFromStorage(photoUrl) {
+  const path = storagePathFromUrl(photoUrl);
+  if (!path) return;
+  try {
+    await deleteObject(ref(storage, path));
+  } catch (e) {
+    // Ignore - file may already be gone or not in our bucket
+  }
 }
 
 export async function removeListingPhoto(listingId, photoUrl, remainingPhotos) {

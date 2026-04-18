@@ -185,6 +185,12 @@ export default function ListingPage() {
             <div className="border rounded p-3 mb-3 bg-light">
               <h6 className="fw-semibold mb-2">Seller tools</h6>
 
+              <div className="mb-3">
+                <Link to={`/listing/${listing.id}/edit`} className="btn btn-sl btn-sm">
+                  Edit listing
+                </Link>
+              </div>
+
               {hunapukaUrl && (
                 <div className="mb-3">
                   <a href={hunapukaUrl} target="_blank" rel="noopener noreferrer" className="btn btn-outline-secondary btn-sm">
