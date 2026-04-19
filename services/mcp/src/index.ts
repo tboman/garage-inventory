@@ -20,6 +20,16 @@ app.use(personaMiddleware);
 app.get('/.well-known/openid-configuration', openidConfiguration);
 app.get('/.well-known/jwks.json', jwks);
 
+app.get('/authorize', (req, res) => {
+  const persona = requirePersona(req);
+  const target = new URL('https://storageloot.shop/authorize');
+  for (const [k, v] of Object.entries(req.query)) {
+    if (typeof v === 'string') target.searchParams.set(k, v);
+  }
+  target.searchParams.set('mcp_host', persona.host);
+  res.redirect(302, target.toString());
+});
+
 app.post('/register', express.json({ limit: '10kb' }), register);
 
 app.post(
