@@ -7,12 +7,15 @@ import { token } from './oidc/token.js';
 import { requireAuth } from './auth/verifyJwt.js';
 import { createMcpServer } from './mcp/server.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { personaMiddleware, requirePersona } from './util/persona.js';
 
 const app = express();
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+app.use(personaMiddleware);
 
 app.get('/.well-known/openid-configuration', openidConfiguration);
 app.get('/.well-known/jwks.json', jwks);
@@ -33,13 +36,14 @@ app.get('/sse', requireAuth, async (req: Request, res: Response) => {
     res.status(401).json({ error: 'invalid_token' });
     return;
   }
+  const persona = requirePersona(req);
   const transport = new SSEServerTransport('/messages', res);
   transports.set(transport.sessionId, transport);
   res.on('close', () => {
     transports.delete(transport.sessionId);
   });
 
-  const server = createMcpServer(req.auth);
+  const server = createMcpServer(req.auth, persona);
   try {
     await server.connect(transport);
   } catch (err) {
@@ -61,8 +65,6 @@ app.post('/messages', requireAuth, async (req: Request, res: Response) => {
     return;
   }
   try {
-    // Express Request extends IncomingMessage; cast bypasses SDK's AuthInfo shape
-    // since we pass auth via the per-session McpServer closure, not the SDK.
     await transport.handlePostMessage(req as never, res);
   } catch (err) {
     console.error('Message handling failed:', err);
@@ -71,7 +73,5 @@ app.post('/messages', requireAuth, async (req: Request, res: Response) => {
 });
 
 app.listen(config.port, () => {
-  console.log(
-    `MCP server listening on :${config.port} (issuer=${config.issuer})`,
-  );
+  console.log(`MCP server listening on :${config.port}`);
 });

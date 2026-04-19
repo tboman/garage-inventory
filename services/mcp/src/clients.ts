@@ -1,6 +1,7 @@
 import { getDb, FieldValue } from './firestore.js';
 import { generateClientId, generateClientSecret } from './util/ids.js';
 import { hashSecret } from './util/secretHash.js';
+import type { Persona, PersonaName } from './personas.js';
 
 export interface ClientRecord {
   client_id: string;
@@ -11,6 +12,8 @@ export interface ClientRecord {
   grant_types: string[];
   response_types: string[];
   scope: string;
+  persona: PersonaName;
+  issuer: string;
 }
 
 export interface NewClientInput {
@@ -29,6 +32,7 @@ export interface CreatedClient extends ClientRecord {
 
 export async function createClient(
   input: NewClientInput,
+  persona: Persona,
 ): Promise<CreatedClient> {
   const isConfidential = input.token_endpoint_auth_method !== 'none';
   const client_id = generateClientId();
@@ -45,6 +49,8 @@ export async function createClient(
     grant_types: input.grant_types,
     response_types: input.response_types,
     scope: input.scope,
+    persona: persona.name,
+    issuer: persona.issuer,
   };
 
   await getDb()

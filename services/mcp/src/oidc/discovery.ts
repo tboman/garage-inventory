@@ -1,13 +1,14 @@
 import type { Request, Response } from 'express';
-import { config } from '../config.js';
+import { requirePersona } from '../util/persona.js';
 
-export function openidConfiguration(_req: Request, res: Response): void {
+export function openidConfiguration(req: Request, res: Response): void {
+  const persona = requirePersona(req);
   res.json({
-    issuer: config.issuer,
-    jwks_uri: `${config.issuer}/.well-known/jwks.json`,
+    issuer: persona.issuer,
+    jwks_uri: `${persona.issuer}/.well-known/jwks.json`,
     authorization_endpoint: 'https://storageloot.shop/authorize',
-    token_endpoint: `${config.issuer}/token`,
-    registration_endpoint: `${config.issuer}/register`,
+    token_endpoint: `${persona.issuer}/token`,
+    registration_endpoint: `${persona.issuer}/register`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
@@ -17,7 +18,7 @@ export function openidConfiguration(_req: Request, res: Response): void {
       'none',
     ],
     id_token_signing_alg_values_supported: ['RS256'],
-    scopes_supported: ['openid', 'profile', 'market:read', 'market:search'],
+    scopes_supported: [...persona.mcpScopes],
     subject_types_supported: ['public'],
   });
 }

@@ -3,12 +3,21 @@ import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
+import { startEbayLogin } from '../ebayAuth';
 
 const SCOPE_LABELS = {
   openid: 'Confirm your StorageLoot identity',
   profile: 'Read your StorageLoot display name and email',
   'market:read': 'Read marketplace listings on your behalf',
   'market:search': 'Search marketplaces on your behalf',
+  'finance:read': 'Read your eBay finance summary (payouts, fees, transactions)',
+};
+
+const EBAY_SCOPE_LABELS = {
+  'https://api.ebay.com/oauth/api_scope/sell.account':
+    'eBay account settings (read)',
+  'https://api.ebay.com/oauth/api_scope/sell.finances':
+    'eBay payouts, fees, and transactions (read)',
 };
 
 function validateParams(p) {
@@ -86,6 +95,11 @@ export default function AgentAuthorizePage() {
     redirectWithParams(params.redirectUri, { error: 'access_denied', state: params.state });
   }
 
+  function handleRelinkEbay(missingScopes) {
+    const returnTo = `/authorize?${searchParams.toString()}`;
+    startEbayLogin(missingScopes, returnTo);
+  }
+
   if (paramError) {
     return (
       <div className="container py-5" style={{ maxWidth: 520 }}>
@@ -147,6 +161,17 @@ export default function AgentAuthorizePage() {
   const redirectHost = (() => { try { return new URL(params.redirectUri).host; } catch { return params.redirectUri; } })();
   const displayName = agent.client_name || params.clientId;
 
+  const requiredEbayScopes = Array.isArray(agent.required_ebay_scopes)
+    ? agent.required_ebay_scopes
+    : [];
+  const currentEbayScopes = Array.isArray(agent.current_ebay_scopes)
+    ? agent.current_ebay_scopes
+    : [];
+  const missingEbayScopes = requiredEbayScopes.filter(
+    (s) => !currentEbayScopes.includes(s),
+  );
+  const needsEbayRelink = missingEbayScopes.length > 0;
+
   return (
     <div className="container py-5" style={{ maxWidth: 520 }}>
       <div className="card shadow-sm">
@@ -161,11 +186,40 @@ export default function AgentAuthorizePage() {
               <li key={s}>{SCOPE_LABELS[s] || s}</li>
             ))}
           </ul>
+
+          {needsEbayRelink && (
+            <div className="alert alert-warning">
+              <p className="mb-2">
+                <strong>Additional eBay access needed.</strong> This agent needs your
+                eBay account linked with extra scopes before it can act on your behalf.
+              </p>
+              <p className="mb-1 small">Missing eBay permissions:</p>
+              <ul className="mb-3 small">
+                {missingEbayScopes.map((s) => (
+                  <li key={s}>{EBAY_SCOPE_LABELS[s] || s}</li>
+                ))}
+              </ul>
+              <button
+                className="btn btn-sl btn-sm"
+                onClick={() => handleRelinkEbay(missingEbayScopes)}
+              >
+                {agent.ebay_linked
+                  ? 'Re-link eBay with finance access'
+                  : 'Link eBay with finance access'}
+              </button>
+            </div>
+          )}
+
           <p className="text-muted small mb-4">
             Signed in as {user.email}. After allowing, you'll be redirected to <code>{redirectHost}</code>.
           </p>
           <div className="d-flex gap-2">
-            <button className="btn btn-sl flex-fill" onClick={handleAllow} disabled={submitting}>
+            <button
+              className="btn btn-sl flex-fill"
+              onClick={handleAllow}
+              disabled={submitting || needsEbayRelink}
+              title={needsEbayRelink ? 'Re-link eBay first' : undefined}
+            >
               {submitting ? 'Authorizing…' : 'Allow'}
             </button>
             <button className="btn btn-outline-secondary flex-fill" onClick={handleDeny} disabled={submitting}>

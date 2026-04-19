@@ -2,7 +2,7 @@ import { SignJWT } from 'jose';
 import { randomBytes, createHash } from 'node:crypto';
 import { getSigningKey } from './jwks.js';
 import { getDb, FieldValue } from './firestore.js';
-import { config } from './config.js';
+import type { Persona, PersonaName } from './personas.js';
 
 const ACCESS_TOKEN_TTL_SEC = 3600;
 const REFRESH_TOKEN_TTL_SEC = 30 * 86400;
@@ -21,6 +21,7 @@ export interface IssuedToken {
 
 export async function mintAccessToken(
   claims: AccessTokenClaims,
+  persona: Persona,
 ): Promise<IssuedToken> {
   const { privateKey, kid } = await getSigningKey();
   const token = await new SignJWT({
@@ -29,8 +30,8 @@ export async function mintAccessToken(
     ...(claims.ebay_user_id ? { ebay_user_id: claims.ebay_user_id } : {}),
   })
     .setProtectedHeader({ alg: 'RS256', kid })
-    .setIssuer(config.issuer)
-    .setAudience(config.issuer)
+    .setIssuer(persona.issuer)
+    .setAudience(persona.issuer)
     .setSubject(claims.sub)
     .setIssuedAt()
     .setExpirationTime(`${ACCESS_TOKEN_TTL_SEC}s`)
@@ -42,6 +43,7 @@ export async function mintRefreshToken(
   uid: string,
   clientId: string,
   scope: string,
+  persona: Persona,
 ): Promise<string> {
   const raw = randomBytes(32).toString('base64url');
   const id = createHash('sha256').update(raw).digest('base64url');
@@ -49,6 +51,8 @@ export async function mintRefreshToken(
     uid,
     client_id: clientId,
     scope,
+    persona: persona.name,
+    issuer: persona.issuer,
     created_at: FieldValue.serverTimestamp(),
     expires_at: Date.now() + REFRESH_TOKEN_TTL_SEC * 1000,
     revoked: false,
@@ -60,6 +64,7 @@ export interface ConsumedRefreshToken {
   uid: string;
   client_id: string;
   scope: string;
+  persona?: PersonaName;
 }
 
 export async function consumeRefreshToken(
@@ -77,6 +82,7 @@ export async function consumeRefreshToken(
       scope: string;
       revoked: boolean;
       expires_at: number;
+      persona?: PersonaName;
     };
     if (data.revoked || data.expires_at < Date.now()) return null;
     tx.update(ref, {
@@ -87,6 +93,7 @@ export async function consumeRefreshToken(
       uid: data.uid,
       client_id: data.client_id,
       scope: data.scope,
+      ...(data.persona ? { persona: data.persona } : {}),
     };
   });
 }

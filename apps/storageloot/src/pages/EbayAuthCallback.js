@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '../hooks/useAuth';
 import { functions } from '../firebase';
-import { consumeEbayState } from '../ebayAuth';
+import { consumeEbayState, consumeEbayReturnTo } from '../ebayAuth';
 
 export default function EbayAuthCallback() {
   const [searchParams] = useSearchParams();
@@ -48,8 +48,9 @@ export default function EbayAuthCallback() {
       try {
         const fn = httpsCallable(functions, 'linkEbayAccount');
         const res = await fn({ code });
+        const returnTo = consumeEbayReturnTo();
         setStatus(`Linked as @${res.data.username}. Redirecting…`);
-        setTimeout(() => navigate('/', { replace: true }), 1200);
+        setTimeout(() => navigate(returnTo || '/', { replace: true }), 1200);
       } catch (e) {
         setError(e.message || 'Failed to link eBay account.');
       }

@@ -1,14 +1,17 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AuthContext } from '../auth/verifyJwt.js';
-import { registerPing } from '../tools/ping.js';
-import { registerListUserEbayItems } from '../tools/listUserEbayItems.js';
+import type { Persona } from '../personas.js';
 
-export function createMcpServer(auth: AuthContext): McpServer {
+export function createMcpServer(
+  auth: AuthContext,
+  persona: Persona,
+): McpServer {
   const server = new McpServer(
-    { name: 'storageloot-mcp', version: '0.1.0' },
+    { name: `storageloot-mcp-${persona.name}`, version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
-  registerPing(server, auth);
-  registerListUserEbayItems(server, auth);
+  for (const register of persona.toolRegistrations) {
+    register(server, auth);
+  }
   return server;
 }

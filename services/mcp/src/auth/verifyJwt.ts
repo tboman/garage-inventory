@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from 'jose';
-import { config } from '../config.js';
 import { getSigningKey } from '../jwks.js';
+import { requirePersona } from '../util/persona.js';
 
 export interface AuthContext {
   sub: string;
@@ -54,10 +54,11 @@ export async function requireAuth(
   }
 
   try {
+    const persona = requirePersona(req);
     const keys = await getJwks();
     const { payload } = await jwtVerify(token, keys, {
-      issuer: config.issuer,
-      audience: config.issuer,
+      issuer: persona.issuer,
+      audience: persona.issuer,
       algorithms: ['RS256'],
     });
     const sub = typeof payload.sub === 'string' ? payload.sub : null;

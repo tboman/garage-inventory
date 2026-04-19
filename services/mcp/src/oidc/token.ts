@@ -8,6 +8,7 @@ import {
   consumeRefreshToken,
   getEbayUserId,
 } from '../tokens.js';
+import { requirePersona } from '../util/persona.js';
 
 interface ClientAuth {
   client_id: string | null;
@@ -18,6 +19,7 @@ interface ClientDoc {
   client_secret_hash: string | null;
   token_endpoint_auth_method: string;
   redirect_uris: string[];
+  issuer?: string;
 }
 
 interface AuthSessionDoc {
@@ -105,6 +107,7 @@ async function handleAuthorizationCode(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const persona = requirePersona(req);
   const body = (req.body ?? {}) as Record<string, unknown>;
   const code = typeof body['code'] === 'string' ? (body['code'] as string) : null;
   const redirectUri =
@@ -119,6 +122,14 @@ async function handleAuthorizationCode(
 
   const client = await authenticateClient(client_id, client_secret);
   if (!client) return errJson(res, 401, 'invalid_client');
+  if (client.issuer && client.issuer !== persona.issuer) {
+    return errJson(
+      res,
+      400,
+      'invalid_client',
+      'Client is registered at a different MCP persona.',
+    );
+  }
 
   const db = getDb();
   const codeRef = db.collection('auth_sessions').doc(code);
@@ -152,16 +163,20 @@ async function handleAuthorizationCode(
     return errJson(res, 400, 'invalid_grant', 'PKCE verification failed.');
 
   const ebayUserId = await getEbayUserId(consumed.uid);
-  const access = await mintAccessToken({
-    sub: consumed.uid,
-    scope: consumed.scope,
-    client_id,
-    ebay_user_id: ebayUserId,
-  });
+  const access = await mintAccessToken(
+    {
+      sub: consumed.uid,
+      scope: consumed.scope,
+      client_id,
+      ebay_user_id: ebayUserId,
+    },
+    persona,
+  );
   const refreshToken = await mintRefreshToken(
     consumed.uid,
     client_id,
     consumed.scope,
+    persona,
   );
 
   res.json({
@@ -174,6 +189,7 @@ async function handleAuthorizationCode(
 }
 
 async function handleRefresh(req: Request, res: Response): Promise<void> {
+  const persona = requirePersona(req);
   const body = (req.body ?? {}) as Record<string, unknown>;
   const refreshToken =
     typeof body['refresh_token'] === 'string'
@@ -184,6 +200,14 @@ async function handleRefresh(req: Request, res: Response): Promise<void> {
 
   const client = await authenticateClient(client_id, client_secret);
   if (!client) return errJson(res, 401, 'invalid_client');
+  if (client.issuer && client.issuer !== persona.issuer) {
+    return errJson(
+      res,
+      400,
+      'invalid_client',
+      'Client is registered at a different MCP persona.',
+    );
+  }
 
   const consumed = await consumeRefreshToken(refreshToken);
   if (!consumed) return errJson(res, 400, 'invalid_grant');
@@ -191,16 +215,20 @@ async function handleRefresh(req: Request, res: Response): Promise<void> {
     return errJson(res, 400, 'invalid_grant', 'Client mismatch.');
 
   const ebayUserId = await getEbayUserId(consumed.uid);
-  const access = await mintAccessToken({
-    sub: consumed.uid,
-    scope: consumed.scope,
-    client_id,
-    ebay_user_id: ebayUserId,
-  });
+  const access = await mintAccessToken(
+    {
+      sub: consumed.uid,
+      scope: consumed.scope,
+      client_id,
+      ebay_user_id: ebayUserId,
+    },
+    persona,
+  );
   const newRefresh = await mintRefreshToken(
     consumed.uid,
     client_id,
     consumed.scope,
+    persona,
   );
 
   res.json({

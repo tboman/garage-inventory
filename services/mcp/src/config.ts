@@ -1,11 +1,5 @@
 import 'dotenv/config';
 
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
-  return v;
-}
-
 const ebayEnv = (process.env['EBAY_ENV'] || 'production').toLowerCase();
 if (ebayEnv !== 'production' && ebayEnv !== 'sandbox') {
   throw new Error(`EBAY_ENV must be 'production' or 'sandbox' (got '${ebayEnv}').`);
@@ -24,7 +18,6 @@ const ebayBases =
 
 export const config = {
   port: Number(process.env.PORT) || 8080,
-  issuer: required('ISSUER'),
   gcpProject: process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
   jwtPrivateJwkInline: process.env.MCP_JWT_PRIVATE_JWK,
   jwtPrivateJwkSecretName:

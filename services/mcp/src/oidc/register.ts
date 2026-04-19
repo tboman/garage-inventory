@@ -1,16 +1,18 @@
 import type { Request, Response } from 'express';
 import { validateMetadata } from '../util/validate.js';
 import { createClient } from '../clients.js';
+import { requirePersona } from '../util/persona.js';
 
 export async function register(req: Request, res: Response): Promise<void> {
-  const result = validateMetadata(req.body);
+  const persona = requirePersona(req);
+  const result = validateMetadata(req.body, persona.mcpScopes);
   if ('error' in result) {
     res.status(400).json(result);
     return;
   }
 
   try {
-    const created = await createClient(result);
+    const created = await createClient(result, persona);
     res.status(201).json({
       client_id: created.client_id,
       ...(created.client_secret

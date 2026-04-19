@@ -1,9 +1,3 @@
-const SUPPORTED_SCOPES = new Set([
-  'openid',
-  'profile',
-  'market:read',
-  'market:search',
-]);
 const SUPPORTED_GRANTS = new Set(['authorization_code', 'refresh_token']);
 const SUPPORTED_RESPONSE_TYPES = new Set(['code']);
 const SUPPORTED_AUTH_METHODS = new Set([
@@ -28,7 +22,9 @@ export interface ValidationError {
 
 export function validateMetadata(
   body: unknown,
+  supportedScopes: readonly string[],
 ): ValidatedMetadata | ValidationError {
+  const SUPPORTED_SCOPES = new Set(supportedScopes);
   if (!body || typeof body !== 'object') {
     return {
       error: 'invalid_client_metadata',
@@ -101,7 +97,7 @@ export function validateMetadata(
   }
 
   const scopeStr =
-    typeof b['scope'] === 'string' ? b['scope'] : [...SUPPORTED_SCOPES].join(' ');
+    typeof b['scope'] === 'string' ? b['scope'] : supportedScopes.join(' ');
   const scopes = scopeStr.split(/\s+/).filter(Boolean);
   for (const s of scopes) {
     if (!SUPPORTED_SCOPES.has(s)) {
