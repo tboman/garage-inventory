@@ -100,7 +100,8 @@ export function validateMetadata(
     }
   }
 
-  const scopeStr = typeof b['scope'] === 'string' ? b['scope'] : 'market:read';
+  const scopeStr =
+    typeof b['scope'] === 'string' ? b['scope'] : [...SUPPORTED_SCOPES].join(' ');
   const scopes = scopeStr.split(/\s+/).filter(Boolean);
   for (const s of scopes) {
     if (!SUPPORTED_SCOPES.has(s)) {
