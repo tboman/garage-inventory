@@ -53,6 +53,7 @@ export default function AgentAuthorizePage() {
     state: searchParams.get('state'),
     codeChallenge: searchParams.get('code_challenge'),
     codeChallengeMethod: searchParams.get('code_challenge_method'),
+    mcpHost: searchParams.get('mcp_host'),
   };
   const paramError = validateParams(params);
 
@@ -66,7 +67,10 @@ export default function AgentAuthorizePage() {
     (async () => {
       try {
         const fn = httpsCallable(functions, 'getRegisteredAgent');
-        const res = await fn({ client_id: params.clientId });
+        const res = await fn({
+          client_id: params.clientId,
+          mcp_host: params.mcpHost,
+        });
         if (!cancelled) setAgent(res.data);
       } catch (err) {
         if (!cancelled) setLoadError(err.message || 'Failed to load agent info.');
@@ -85,6 +89,7 @@ export default function AgentAuthorizePage() {
         scope: params.scope,
         code_challenge: params.codeChallenge,
         code_challenge_method: params.codeChallengeMethod,
+        mcp_host: params.mcpHost,
       });
       redirectWithParams(params.redirectUri, { code: res.data.code, state: params.state });
     } catch (err) {

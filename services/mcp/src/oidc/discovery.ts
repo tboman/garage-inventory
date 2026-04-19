@@ -3,10 +3,12 @@ import { requirePersona } from '../util/persona.js';
 
 export function openidConfiguration(req: Request, res: Response): void {
   const persona = requirePersona(req);
+  const authEndpoint = new URL('https://storageloot.shop/authorize');
+  authEndpoint.searchParams.set('mcp_host', persona.host);
   res.json({
     issuer: persona.issuer,
     jwks_uri: `${persona.issuer}/.well-known/jwks.json`,
-    authorization_endpoint: 'https://storageloot.shop/authorize',
+    authorization_endpoint: authEndpoint.toString(),
     token_endpoint: `${persona.issuer}/token`,
     registration_endpoint: `${persona.issuer}/register`,
     response_types_supported: ['code'],
@@ -20,5 +22,6 @@ export function openidConfiguration(req: Request, res: Response): void {
     id_token_signing_alg_values_supported: ['RS256'],
     scopes_supported: [...persona.mcpScopes],
     subject_types_supported: ['public'],
+    client_id_metadata_document_supported: true,
   });
 }

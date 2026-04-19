@@ -9,6 +9,8 @@ import {
   getEbayUserId,
 } from '../tokens.js';
 import { requirePersona } from '../util/persona.js';
+import { isCimdClientId, fetchCimd } from '../cimd.js';
+import type { Persona } from '../personas.js';
 
 interface ClientAuth {
   client_id: string | null;
@@ -31,6 +33,7 @@ interface AuthSessionDoc {
   code_challenge_method: string;
   expires_at: number;
   used: boolean;
+  persona?: string;
 }
 
 function errJson(
@@ -74,8 +77,18 @@ function extractClientAuth(req: Request): ClientAuth {
 async function authenticateClient(
   clientId: string | null,
   providedSecret: string | null,
+  persona: Persona,
 ): Promise<ClientDoc | null> {
   if (!clientId) return null;
+  if (isCimdClientId(clientId)) {
+    const doc = await fetchCimd(clientId, persona.mcpScopes);
+    if ('error' in doc) return null;
+    return {
+      client_secret_hash: null,
+      token_endpoint_auth_method: 'none',
+      redirect_uris: doc.redirect_uris,
+    };
+  }
   const snap = await getDb().collection('mcp_clients').doc(clientId).get();
   if (!snap.exists) return null;
   const client = snap.data() as ClientDoc;
@@ -120,7 +133,7 @@ async function handleAuthorizationCode(
     return errJson(res, 400, 'invalid_request', 'Missing required fields.');
   }
 
-  const client = await authenticateClient(client_id, client_secret);
+  const client = await authenticateClient(client_id, client_secret, persona);
   if (!client) return errJson(res, 401, 'invalid_client');
   if (client.issuer && client.issuer !== persona.issuer) {
     return errJson(
@@ -161,6 +174,13 @@ async function handleAuthorizationCode(
     return errJson(res, 400, 'invalid_grant', 'Unsupported PKCE method.');
   if (!verifyPkceS256(codeVerifier, consumed.code_challenge))
     return errJson(res, 400, 'invalid_grant', 'PKCE verification failed.');
+  if (consumed.persona && consumed.persona !== persona.name)
+    return errJson(
+      res,
+      400,
+      'invalid_grant',
+      'Code was minted for a different MCP persona.',
+    );
 
   const ebayUserId = await getEbayUserId(consumed.uid);
   const access = await mintAccessToken(
@@ -198,7 +218,7 @@ async function handleRefresh(req: Request, res: Response): Promise<void> {
   const { client_id, client_secret } = extractClientAuth(req);
   if (!refreshToken || !client_id) return errJson(res, 400, 'invalid_request');
 
-  const client = await authenticateClient(client_id, client_secret);
+  const client = await authenticateClient(client_id, client_secret, persona);
   if (!client) return errJson(res, 401, 'invalid_client');
   if (client.issuer && client.issuer !== persona.issuer) {
     return errJson(
@@ -213,6 +233,13 @@ async function handleRefresh(req: Request, res: Response): Promise<void> {
   if (!consumed) return errJson(res, 400, 'invalid_grant');
   if (consumed.client_id !== client_id)
     return errJson(res, 400, 'invalid_grant', 'Client mismatch.');
+  if (consumed.persona && consumed.persona !== persona.name)
+    return errJson(
+      res,
+      400,
+      'invalid_grant',
+      'Refresh token was issued for a different MCP persona.',
+    );
 
   const ebayUserId = await getEbayUserId(consumed.uid);
   const access = await mintAccessToken(
