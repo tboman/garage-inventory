@@ -24,11 +24,11 @@ exports.mintAuthorizationCode = onCall(async (request) => {
   if (
     typeof clientId !== "string" ||
     typeof redirectUri !== "string" ||
-    typeof scope !== "string" ||
     typeof codeChallenge !== "string"
   ) {
     throw new HttpsError("invalid-argument", "Missing required fields.");
   }
+  const scopeStr = typeof scope === "string" ? scope : "";
   if (codeChallengeMethod !== "S256") {
     throw new HttpsError("invalid-argument", "Only S256 PKCE is supported.");
   }
@@ -37,6 +37,7 @@ exports.mintAuthorizationCode = onCall(async (request) => {
 
   let registeredRedirectUris;
   let registeredScopes;
+  let registeredScopeStr;
   let persona;
 
   if (isCimdClientId(clientId)) {
@@ -56,8 +57,9 @@ exports.mintAuthorizationCode = onCall(async (request) => {
       );
     }
     registeredRedirectUris = doc.redirect_uris;
+    registeredScopeStr = String(doc.scope || "");
     registeredScopes = new Set(
-      String(doc.scope || "").split(/\s+/).filter(Boolean),
+      registeredScopeStr.split(/\s+/).filter(Boolean),
     );
   } else {
     const clientSnap = await db.collection("mcp_clients").doc(clientId).get();
@@ -68,8 +70,9 @@ exports.mintAuthorizationCode = onCall(async (request) => {
     registeredRedirectUris = Array.isArray(client.redirect_uris)
       ? client.redirect_uris
       : [];
+    registeredScopeStr = String(client.scope || "");
     registeredScopes = new Set(
-      String(client.scope || "").split(/\s+/).filter(Boolean),
+      registeredScopeStr.split(/\s+/).filter(Boolean),
     );
     persona = typeof client.persona === "string" ? client.persona : "seller";
   }
@@ -78,7 +81,8 @@ exports.mintAuthorizationCode = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Redirect URI not registered.");
   }
 
-  const requested = scope.split(/\s+/).filter(Boolean);
+  const effectiveScopeStr = scopeStr || registeredScopeStr;
+  const requested = effectiveScopeStr.split(/\s+/).filter(Boolean);
   for (const s of requested) {
     if (!registeredScopes.has(s)) {
       throw new HttpsError(

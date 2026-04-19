@@ -27,7 +27,6 @@ function validateParams(p) {
   if (!p.clientId) return 'Missing client_id.';
   if (!p.redirectUri) return 'Missing redirect_uri.';
   try { new URL(p.redirectUri); } catch { return 'Invalid redirect_uri.'; }
-  if (!p.scope) return 'Missing scope.';
   if (!p.codeChallenge) return 'Missing code_challenge (PKCE required).';
   if (p.codeChallengeMethod !== 'S256') return 'code_challenge_method must be S256.';
   return null;
@@ -86,7 +85,7 @@ export default function AgentAuthorizePage() {
       const res = await fn({
         client_id: params.clientId,
         redirect_uri: params.redirectUri,
-        scope: params.scope,
+        scope: params.scope || agent?.scope || '',
         code_challenge: params.codeChallenge,
         code_challenge_method: params.codeChallengeMethod,
         mcp_host: params.mcpHost,
@@ -164,7 +163,8 @@ export default function AgentAuthorizePage() {
     );
   }
 
-  const scopes = params.scope.split(/\s+/).filter(Boolean);
+  const effectiveScope = params.scope || agent.scope || '';
+  const scopes = effectiveScope.split(/\s+/).filter(Boolean);
   const redirectHost = (() => { try { return new URL(params.redirectUri).host; } catch { return params.redirectUri; } })();
   const displayName = agent.client_name || params.clientId;
 
