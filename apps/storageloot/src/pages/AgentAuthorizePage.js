@@ -11,6 +11,8 @@ const SCOPE_LABELS = {
   'market:read': 'Read marketplace listings on your behalf',
   'market:search': 'Search marketplaces on your behalf',
   'finance:read': 'Read your eBay finance summary (payouts, fees, transactions)',
+  'identity:read':
+    'Admin: list all StorageLoot identities and the MCP personas they\'ve authorized',
 };
 
 const EBAY_SCOPE_LABELS = {

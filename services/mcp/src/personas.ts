@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AuthContext } from './auth/verifyJwt.js';
 
-export type PersonaName = 'seller' | 'finance';
+export type PersonaName = 'seller' | 'finance' | 'manager';
 
 export type ToolRegistration = (server: McpServer, auth: AuthContext) => void;
 
@@ -18,6 +18,7 @@ import { registerPing } from './tools/ping.js';
 import { registerListUserEbayItems } from './tools/listUserEbayItems.js';
 import { registerFinancePing } from './tools/financePing.js';
 import { registerFinanceTransactionSummary } from './tools/financeTransactionSummary.js';
+import { registerListIdentities } from './tools/listIdentities.js';
 
 const SELLER: Persona = {
   name: 'seller',
@@ -40,7 +41,16 @@ const FINANCE: Persona = {
   toolRegistrations: [registerFinancePing, registerFinanceTransactionSummary],
 };
 
-const ALL_PERSONAS: readonly Persona[] = [SELLER, FINANCE];
+const MANAGER: Persona = {
+  name: 'manager',
+  host: 'mcp-admin.storageloot.shop',
+  issuer: 'https://mcp-admin.storageloot.shop',
+  mcpScopes: ['openid', 'profile', 'identity:read'],
+  requiredEbayScopes: [],
+  toolRegistrations: [registerListIdentities],
+};
+
+const ALL_PERSONAS: readonly Persona[] = [SELLER, FINANCE, MANAGER];
 
 const BY_HOST = new Map<string, Persona>(
   ALL_PERSONAS.map((p) => [p.host.toLowerCase(), p]),
