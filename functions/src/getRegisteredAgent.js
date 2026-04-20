@@ -29,6 +29,7 @@ exports.getRegisteredAgent = onCall(async (request) => {
   const ebayPromise = db
     .doc(`users/${uid}/integrations/ebay`)
     .get();
+  const agentsPromise = db.collection(`users/${uid}/agents`).get();
 
   let clientInfo;
   let persona;
@@ -80,6 +81,17 @@ exports.getRegisteredAgent = onCall(async (request) => {
     }
   }
 
+  const agentsSnap = await agentsPromise;
+  const assignableAgents = agentsSnap.docs
+    .map((d) => d.data())
+    .filter((a) => a && a.persona === persona)
+    .map((a) => ({
+      agent_uid: a.agent_uid,
+      email: a.email || null,
+      label: a.label || a.email || a.agent_uid,
+      persona: a.persona,
+    }));
+
   return {
     client_id: clientId,
     client_name: clientInfo.client_name,
@@ -89,5 +101,6 @@ exports.getRegisteredAgent = onCall(async (request) => {
     required_ebay_scopes: requiredEbayScopes,
     current_ebay_scopes: currentEbayScopes,
     ebay_linked: ebayLinked,
+    assignable_agents: assignableAgents,
   };
 });

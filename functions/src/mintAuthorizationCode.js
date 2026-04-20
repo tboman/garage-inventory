@@ -20,6 +20,7 @@ exports.mintAuthorizationCode = onCall(async (request) => {
   const codeChallenge = data.code_challenge;
   const codeChallengeMethod = data.code_challenge_method;
   const mcpHost = data.mcp_host;
+  const agentUid = typeof data.agent_uid === "string" && data.agent_uid ? data.agent_uid : null;
 
   if (
     typeof clientId !== "string" ||
@@ -92,9 +93,35 @@ exports.mintAuthorizationCode = onCall(async (request) => {
     }
   }
 
+  let sessionUid = request.auth.uid;
+  if (agentUid) {
+    const ownerSnap = await db
+      .collection("agent_owners")
+      .doc(agentUid)
+      .get();
+    if (!ownerSnap.exists) {
+      throw new HttpsError("not-found", "Agent not registered.");
+    }
+    const ownerData = ownerSnap.data();
+    if (ownerData.owner_uid !== request.auth.uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "You do not own this agent identity.",
+      );
+    }
+    if (ownerData.persona !== persona) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Agent persona mismatch (agent=${ownerData.persona}, requested=${persona}).`,
+      );
+    }
+    sessionUid = agentUid;
+  }
+
   const code = randomBytes(32).toString("base64url");
   await db.collection("auth_sessions").doc(code).set({
-    uid: request.auth.uid,
+    uid: sessionUid,
+    owner_uid: request.auth.uid,
     client_id: clientId,
     redirect_uri: redirectUri,
     scope: requested.join(" "),

@@ -59,6 +59,7 @@ export default function AgentAuthorizePage() {
   const [agent, setAgent] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedAgentUid, setSelectedAgentUid] = useState('');
 
   useEffect(() => {
     if (authLoading || !user || paramError) return;
@@ -89,6 +90,7 @@ export default function AgentAuthorizePage() {
         code_challenge: params.codeChallenge,
         code_challenge_method: params.codeChallengeMethod,
         mcp_host: params.mcpHost,
+        ...(selectedAgentUid ? { agent_uid: selectedAgentUid } : {}),
       });
       redirectWithParams(params.redirectUri, { code: res.data.code, state: params.state });
     } catch (err) {
@@ -179,6 +181,10 @@ export default function AgentAuthorizePage() {
   );
   const needsEbayRelink = missingEbayScopes.length > 0;
 
+  const assignableAgents = Array.isArray(agent.assignable_agents)
+    ? agent.assignable_agents
+    : [];
+
   return (
     <div className="container py-5" style={{ maxWidth: 520 }}>
       <div className="card shadow-sm">
@@ -214,6 +220,27 @@ export default function AgentAuthorizePage() {
                   ? 'Re-link eBay with finance access'
                   : 'Link eBay with finance access'}
               </button>
+            </div>
+          )}
+
+          {assignableAgents.length > 0 && (
+            <div className="mb-3">
+              <label className="form-label mb-1"><strong>Authorize as:</strong></label>
+              <select
+                className="form-select"
+                value={selectedAgentUid}
+                onChange={(e) => setSelectedAgentUid(e.target.value)}
+              >
+                <option value="">Myself ({user.email})</option>
+                {assignableAgents.map((a) => (
+                  <option key={a.agent_uid} value={a.agent_uid}>
+                    {a.label} ({a.email})
+                  </option>
+                ))}
+              </select>
+              <div className="form-text">
+                The selected identity will own the MCP session. Tool calls will run as that identity.
+              </div>
             </div>
           )}
 

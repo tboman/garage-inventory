@@ -1,14 +1,14 @@
 <mxfile host="app.diagrams.net">
   <diagram id="grants" name="Identity and Grants">
-    <mxGraphModel adaptiveColors="auto" dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1560" pageHeight="1150" math="0" shadow="0">
+    <mxGraphModel adaptiveColors="auto" dx="1800" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1720" pageHeight="1260" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" value="Identity &amp; OAuth Grants: ChatGPT &#8596; StorageLoot MCP (Seller / Finance) &#8596; eBay" style="text;html=1;align=center;fontSize=16;fontStyle=1" vertex="1" parent="1">
-          <mxGeometry x="380" y="10" width="820" height="30" as="geometry" />
+        <mxCell id="title" value="Identity &amp; OAuth Grants: MCP Client (DCR or CIMD) &#8596; StorageLoot MCP (Seller / Finance / Manager) &#8596; eBay" style="text;html=1;align=center;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="320" y="10" width="1120" height="30" as="geometry" />
         </mxCell>
         <mxCell id="legend" value="Grants (color = who approves)" style="rounded=0;fillColor=#FFFFFF;strokeColor=#666666;verticalAlign=top;fontSize=11;fontStyle=1;whiteSpace=wrap;html=1;align=left;spacingLeft=8" vertex="1" parent="1">
-          <mxGeometry x="40" y="50" width="300" height="220" as="geometry" />
+          <mxGeometry x="30" y="50" width="300" height="280" as="geometry" />
         </mxCell>
         <mxCell id="leg1" value="[1] Google OIDC &#8212; user approves" style="rounded=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
           <mxGeometry x="10" y="28" width="280" height="24" as="geometry" />
@@ -19,67 +19,88 @@
         <mxCell id="leg3" value="[3] eBay OAuth finance (additive) &#8212; user" style="rounded=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
           <mxGeometry x="10" y="88" width="280" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="leg4" value="[4] Seller MCP OAuth &#8212; user + DCR" style="rounded=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
+        <mxCell id="leg4" value="[4] Seller MCP OAuth &#8212; user + DCR/CIMD" style="rounded=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
           <mxGeometry x="10" y="118" width="280" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="leg5" value="[5] Finance MCP OAuth &#8212; user + DCR" style="rounded=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
+        <mxCell id="leg5" value="[5] Finance MCP OAuth &#8212; user + DCR/CIMD" style="rounded=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
           <mxGeometry x="10" y="148" width="280" height="24" as="geometry" />
         </mxCell>
+        <mxCell id="leg7" value="[7] Manager MCP OAuth &#8212; user + DCR/CIMD" style="rounded=1;fillColor=#F5D6FF;strokeColor=#7A5A9E;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
+          <mxGeometry x="10" y="178" width="280" height="24" as="geometry" />
+        </mxCell>
         <mxCell id="leg6" value="[6] eBay API resource access (dashed) &#8212; uses stored user token" style="rounded=1;fillColor=none;strokeColor=#888888;dashed=1;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
-          <mxGeometry x="10" y="178" width="280" height="30" as="geometry" />
+          <mxGeometry x="10" y="208" width="280" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="user" value="User&#10;(Google account)" style="rounded=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=13;fontStyle=1;align=center" vertex="1" parent="1">
-          <mxGeometry x="620" y="60" width="320" height="60" as="geometry" />
+        <mxCell id="leg8" value="[8] Agent identity assignment (consent-time pick)" style="rounded=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;align=left;spacingLeft=6" vertex="1" parent="legend">
+          <mxGeometry x="10" y="244" width="280" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="chatgpt" value="ChatGPT&#10;(AI Agent / two distinct OAuth clients)&#10;&#10;Holds per MCP:&#10;&#8226; Seller: JWT iss=mcp.storageloot.shop&#10;&#8226; Finance: JWT iss=mcp-finance.storageloot.shop&#10;&#8226; Separate refresh tokens per persona" style="rounded=1;fillColor=#EDE8F2;strokeColor=#9673A6;fontSize=11;align=center;verticalAlign=middle;whiteSpace=wrap;html=1" vertex="1" parent="1">
-          <mxGeometry x="40" y="480" width="280" height="220" as="geometry" />
+        <mxCell id="clientTypes" value="Two MCP client registration types&#10;&#10;DCR (RFC 7591): POST /register &#8594; opaque client_id, client_secret,&#10;persona stored in mcp_clients. Confidential client.&#10;&#10;CIMD (Client Identifier Metadata Document):&#10;client_id is an HTTPS URL. Server fetches metadata on demand&#10;(HTTPS-only, 5s timeout, 64KB cap, TTL+ETag cache).&#10;Public client &#8212; PKCE S256 is required. No server-side state.&#10;Persona is derived from the mcp_host used at /authorize." style="rounded=1;fillColor=#FFFFFF;strokeColor=#666666;fontSize=10;align=left;whiteSpace=wrap;html=1;verticalAlign=top;spacing=8" vertex="1" parent="1">
+          <mxGeometry x="30" y="340" width="300" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="ebay" value="eBay&#10;(Marketplace IdP / API)&#10;&#10;Issues one user refresh token.&#10;Its scope set grows additively:&#10;&#8226; baseline: api_scope, identity.readonly, sell.inventory&#10;&#8226; + finance: sell.account, sell.finances&#10;&#10;Finance MCP only works once grant [3] is approved." style="rounded=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=center;verticalAlign=middle;whiteSpace=wrap;html=1" vertex="1" parent="1">
-          <mxGeometry x="1240" y="480" width="300" height="260" as="geometry" />
+        <mxCell id="user" value="User&#10;(Google account, owner)" style="rounded=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=13;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="600" y="60" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="chatgpt" value="MCP Client&#10;(Claude / ChatGPT / other agent)&#10;&#10;Per-persona connectors:&#10;&#8226; Seller: JWT iss=mcp.storageloot.shop&#10;&#8226; Finance: JWT iss=mcp-finance.storageloot.shop&#10;&#8226; Manager: JWT iss=mcp-admin.storageloot.shop&#10;&#10;Registers via DCR or via CIMD.&#10;Separate refresh tokens per persona.&#10;Subject (sub) may be owner uid OR assigned agent uid." style="rounded=1;fillColor=#EDE8F2;strokeColor=#9673A6;fontSize=11;align=center;verticalAlign=middle;whiteSpace=wrap;html=1" vertex="1" parent="1">
+          <mxGeometry x="30" y="570" width="300" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="ebay" value="eBay&#10;(Marketplace IdP / API)&#10;&#10;Issues one user refresh token.&#10;Its scope set grows additively:&#10;&#8226; baseline: api_scope, identity.readonly, sell.inventory&#10;&#8226; + finance: sell.account, sell.finances&#10;&#10;Finance &amp; Manager MCPs only fully work once grant [3] is approved." style="rounded=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=center;verticalAlign=middle;whiteSpace=wrap;html=1" vertex="1" parent="1">
+          <mxGeometry x="1430" y="580" width="270" height="260" as="geometry" />
         </mxCell>
         <mxCell id="sl" value="StorageLoot" style="rounded=0;fillColor=#FAFAFA;strokeColor=#666666;verticalAlign=top;fontSize=14;fontStyle=1;whiteSpace=wrap;html=1;align=left;spacingLeft=10" vertex="1" parent="1">
-          <mxGeometry x="370" y="170" width="820" height="930" as="geometry" />
+          <mxGeometry x="360" y="170" width="1050" height="1070" as="geometry" />
         </mxCell>
-        <mxCell id="consent" value="Consent UI&#10;storageloot.shop/authorize&#10;Scope-aware: reads integrations/ebay.scopes&#10;before allowing finance approval." style="rounded=1;fillColor=#FFF7E6;strokeColor=#D79B00;fontSize=11;align=center;whiteSpace=wrap;html=1" vertex="1" parent="sl">
-          <mxGeometry x="20" y="40" width="380" height="90" as="geometry" />
+        <mxCell id="consent" value="Consent UI &#8212; storageloot.shop/authorize (AgentAuthorizePage)&#10;&#10;&#8226; Resolves client via getRegisteredAgent callable:&#10;   &#8211; DCR &#8594; mcp_clients/{client_id} (persona stored)&#10;   &#8594; CIMD &#8594; fetchCimd(url); persona = personaForHost(mcp_host)&#10;&#8226; Reads users/{uid}/integrations/ebay.scopes to enforce [3]&#10;&#8226; [8] Agent picker: &#8220;Authorize as&#8221; &#8212; Myself or one of&#10;   users/{uid}/agents filtered by persona" style="rounded=1;fillColor=#FFF7E6;strokeColor=#D79B00;fontSize=11;align=left;whiteSpace=wrap;html=1;verticalAlign=top;spacing=8" vertex="1" parent="sl">
+          <mxGeometry x="20" y="40" width="510" height="160" as="geometry" />
         </mxCell>
         <mxCell id="fbauth" value="Firebase Auth&#10;(Google sign-in &#8594; uid)" style="rounded=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;align=center" vertex="1" parent="sl">
-          <mxGeometry x="430" y="40" width="370" height="90" as="geometry" />
+          <mxGeometry x="560" y="40" width="470" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="host_note" value="MCP host /authorize (per-persona subdomain)&#10;302 &#8594; storageloot.shop/authorize, forcing mcp_host = current host.&#10;This is how Claude-style connectors that cache authorization_endpoint reach consent." style="rounded=1;fillColor=#FFFFFF;strokeColor=#D79B00;fontSize=10;align=center;whiteSpace=wrap;html=1;dashed=1" vertex="1" parent="sl">
+          <mxGeometry x="560" y="140" width="470" height="60" as="geometry" />
         </mxCell>
         <mxCell id="mcp_seller" value="Seller MCP (Cloud Run)&#10;mcp.storageloot.shop&#10;&#10;persona=seller, issuer=https://mcp.storageloot.shop&#10;MCP scopes: openid profile market:read market:search&#10;Required eBay: sell.inventory (baseline only)" style="rounded=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;align=center;whiteSpace=wrap;html=1" vertex="1" parent="sl">
-          <mxGeometry x="20" y="160" width="380" height="140" as="geometry" />
+          <mxGeometry x="20" y="220" width="330" height="140" as="geometry" />
         </mxCell>
         <mxCell id="mcp_finance" value="Finance MCP (Cloud Run)&#10;mcp-finance.storageloot.shop&#10;&#10;persona=finance, issuer=https://mcp-finance.storageloot.shop&#10;MCP scopes: openid profile finance:read&#10;Required eBay: sell.account + sell.finances" style="rounded=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;align=center;whiteSpace=wrap;html=1" vertex="1" parent="sl">
-          <mxGeometry x="430" y="160" width="370" height="140" as="geometry" />
+          <mxGeometry x="360" y="220" width="330" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="fs" value="Firestore (hunapuka-34ce6) &#8212; identity &amp; grant storage" style="rounded=0;fillColor=#FFFFFF;strokeColor=#999999;verticalAlign=top;fontSize=11;fontStyle=1;whiteSpace=wrap;html=1;align=left;spacingLeft=10;dashed=1" vertex="1" parent="sl">
-          <mxGeometry x="20" y="330" width="780" height="580" as="geometry" />
+        <mxCell id="mcp_admin" value="Manager MCP (Cloud Run)&#10;mcp-admin.storageloot.shop&#10;&#10;persona=manager, issuer=https://mcp-admin.storageloot.shop&#10;MCP scopes: openid profile identity:read&#10;Allowed subjects gated by MANAGER_ADMIN_UIDS env var" style="rounded=1;fillColor=#F5D6FF;strokeColor=#7A5A9E;fontSize=11;align=center;whiteSpace=wrap;html=1" vertex="1" parent="sl">
+          <mxGeometry x="700" y="220" width="330" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="fs" value="Firestore (hunapuka-34ce6) &#8212; identity, clients, grants" style="rounded=0;fillColor=#FFFFFF;strokeColor=#999999;verticalAlign=top;fontSize=11;fontStyle=1;whiteSpace=wrap;html=1;align=left;spacingLeft=10;dashed=1" vertex="1" parent="sl">
+          <mxGeometry x="20" y="380" width="1010" height="660" as="geometry" />
         </mxCell>
         <mxCell id="col_user" value="users/{uid}&#10;Firebase Auth profile (email, displayName)" style="rounded=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=center" vertex="1" parent="fs">
-          <mxGeometry x="20" y="40" width="360" height="60" as="geometry" />
+          <mxGeometry x="20" y="40" width="470" height="60" as="geometry" />
         </mxCell>
         <mxCell id="col_ebay_int" value="users/{uid}/integrations/ebay&#10;userId, username, linkedAt,&#10;scopes[] &#8212; read by consent page to enforce [3]" style="rounded=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
-          <mxGeometry x="400" y="40" width="360" height="80" as="geometry" />
+          <mxGeometry x="510" y="40" width="470" height="80" as="geometry" />
         </mxCell>
         <mxCell id="col_ebay_tok" value="users/{uid}/integration_tokens/ebay&#10;eBay user access + refresh token" style="rounded=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=center" vertex="1" parent="fs">
-          <mxGeometry x="20" y="120" width="360" height="60" as="geometry" />
+          <mxGeometry x="20" y="120" width="470" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="col_auth" value="auth_sessions/{code}&#10;PKCE code: uid + client_id + approved scopes&#10;(60s TTL, one-time)" style="rounded=1;fillColor=#FFF7E6;strokeColor=#999999;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
-          <mxGeometry x="400" y="140" width="360" height="75" as="geometry" />
+        <mxCell id="col_auth" value="auth_sessions/{code}&#10;PKCE code: { uid=sessionUid, owner_uid, client_id, scope,&#10;persona, code_challenge, expires_at, used:false } (60s TTL, one-time)" style="rounded=1;fillColor=#FFF7E6;strokeColor=#999999;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
+          <mxGeometry x="510" y="140" width="470" height="75" as="geometry" />
         </mxCell>
-        <mxCell id="col_client_seller" value="mcp_clients/{client_id}  (persona=seller)&#10;client_name, redirect_uris, scope,&#10;issuer=https://mcp.storageloot.shop" style="rounded=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
-          <mxGeometry x="20" y="200" width="360" height="75" as="geometry" />
+        <mxCell id="col_client_dcr" value="mcp_clients/{client_id}  (DCR &#8212; all personas)&#10;client_name, redirect_uris, scope, client_secret_hash,&#10;persona &#8712; { seller | finance | manager },&#10;issuer = persona&#8217;s host" style="rounded=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
+          <mxGeometry x="20" y="200" width="470" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="col_client_finance" value="mcp_clients/{client_id}  (persona=finance)&#10;client_name, redirect_uris, scope,&#10;issuer=https://mcp-finance.storageloot.shop" style="rounded=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
-          <mxGeometry x="400" y="235" width="360" height="75" as="geometry" />
+        <mxCell id="col_cimd" value="CIMD (no Firestore doc)&#10;client_id = HTTPS URL. Metadata fetched on demand, cached in-memory.&#10;Public client (token_endpoint_auth_method=none). PKCE required.&#10;Persona derived from mcp_host query param, not stored." style="shape=note;fillColor=#EDE8F2;strokeColor=#9673A6;fontSize=10;align=center;whiteSpace=wrap;html=1;size=12" vertex="1" parent="fs">
+          <mxGeometry x="510" y="230" width="470" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="col_rt" value="mcp_refresh_tokens/{id}&#10;uid + client_id + persona + issuer + scope + hashed token&#10;(seller and finance coexist, tagged by persona so tokens cannot cross)" style="rounded=1;fillColor=#FFFFFF;strokeColor=#666666;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
-          <mxGeometry x="20" y="295" width="740" height="80" as="geometry" />
+        <mxCell id="col_agents" value="users/{uid}/agents/{agentUid}&#10;{ agent_uid, email, label, persona }&#10;Owner&#8217;s pool of assignable identities &#8212; filtered by persona at consent time" style="rounded=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
+          <mxGeometry x="20" y="330" width="470" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="col_note" value="Scope-aware consent: the Finance MCP also requires the user&apos;s eBay link to carry sell.account + sell.finances. If they are missing, the consent page disables Allow and offers a &quot;Re-link eBay with finance access&quot; action that triggers grant [3] and returns the user to /authorize.&#10;&#10;Persona isolation: JWTs are issued with iss=aud bound to one persona&apos;s host, and mcp_clients / mcp_refresh_tokens carry the persona. A seller token cannot authenticate against mcp-finance.storageloot.shop and vice versa." style="rounded=0;fillColor=none;strokeColor=none;fontSize=10;fontStyle=2;align=left;whiteSpace=wrap;html=1;spacingLeft=6;spacingRight=6" vertex="1" parent="fs">
-          <mxGeometry x="20" y="390" width="740" height="180" as="geometry" />
+        <mxCell id="col_agent_owners" value="agent_owners/{agentUid}&#10;{ owner_uid, persona }&#10;Reverse index &#8212; mintAuthorizationCode verifies owner_uid == caller&#10;and persona matches the request before binding sessionUid = agentUid" style="rounded=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
+          <mxGeometry x="510" y="340" width="470" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="e1" value="[1] Google OIDC sign-in&#10;&#8594; establishes uid" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="fbauth">
+        <mxCell id="col_rt" value="mcp_refresh_tokens/{id}&#10;uid (= sessionUid) + owner_uid + client_id + persona + issuer + scope + hashed token&#10;(seller/finance/manager coexist, tagged by persona so tokens cannot cross personas)" style="rounded=1;fillColor=#FFFFFF;strokeColor=#666666;fontSize=10;align=center;whiteSpace=wrap;html=1" vertex="1" parent="fs">
+          <mxGeometry x="20" y="440" width="960" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="col_note" value="Scope-aware consent: Finance &amp; Manager MCPs also require the user&apos;s eBay link to carry sell.account + sell.finances when finance data is needed. If missing, the consent page disables Allow and offers &quot;Re-link eBay with finance access&quot; (grant [3]).&#10;&#10;Persona isolation: JWTs are issued with iss=aud bound to one persona&apos;s host, and mcp_clients / mcp_refresh_tokens / auth_sessions carry the persona. A seller token cannot authenticate against mcp-finance.storageloot.shop, mcp-admin.storageloot.shop, and vice versa.&#10;&#10;Agent identity: sessionUid may be an owned agent instead of the signing-in owner. owner_uid is retained on auth_sessions and refresh tokens for revocation and auditing. Tool calls run as the agent identity." style="rounded=0;fillColor=none;strokeColor=none;fontSize=10;fontStyle=2;align=left;whiteSpace=wrap;html=1;spacingLeft=6;spacingRight=6" vertex="1" parent="fs">
+          <mxGeometry x="20" y="530" width="960" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="[1] Google OIDC sign-in&#10;&#8594; establishes uid" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="fbauth">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e1s" value="stored" style="endArrow=open;dashed=1;strokeColor=#6C8EBF;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="fbauth" target="col_user">
@@ -97,43 +118,70 @@
         <mxCell id="e3s" value="scopes[] grows" style="endArrow=open;dashed=1;strokeColor=#B85450;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="ebay" target="col_ebay_int">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4a" value="[4a] DCR /register (no user)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.4;entryDx=0;entryDy=0" edge="1" parent="1" source="chatgpt" target="mcp_seller">
+        <mxCell id="e4a" value="[4a] DCR /register (no user)&#10;or CIMD (no registration)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" edge="1" parent="1" source="chatgpt" target="mcp_seller">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4as" value="persona=seller stored" style="endArrow=open;dashed=1;strokeColor=#D79B00;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_seller" target="col_client_seller">
+        <mxCell id="e4as" value="DCR persona=seller stored" style="endArrow=open;dashed=1;strokeColor=#D79B00;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_seller" target="col_client_dcr">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4b" value="[4b] Approve seller scopes&#10;openid profile market:read market:search" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.45;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="consent">
+        <mxCell id="e4b" value="[4b] Approve seller scopes&#10;openid profile market:read market:search" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.4;exitY=1;exitDx=0;exitDy=0;entryX=0.2;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="consent">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4c" value="[4c] code &#8596; token exchange&#10;JWT iss=mcp.storageloot.shop" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.2;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_seller" target="chatgpt">
+        <mxCell id="e4c" value="[4c] code &#8596; token exchange&#10;JWT iss=mcp.storageloot.shop" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#D79B00;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.15;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_seller" target="chatgpt">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e4cs" value="refresh token (persona=seller)" style="endArrow=open;dashed=1;strokeColor=#D79B00;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_seller" target="col_rt">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5a" value="[5a] DCR /register (no user)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.6;entryDx=0;entryDy=0" edge="1" parent="1" source="chatgpt" target="mcp_finance">
+        <mxCell id="e5a" value="[5a] DCR /register or CIMD" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" edge="1" parent="1" source="chatgpt" target="mcp_finance">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5as" value="persona=finance stored" style="endArrow=open;dashed=1;strokeColor=#9673A6;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_finance" target="col_client_finance">
+        <mxCell id="e5as" value="DCR persona=finance stored" style="endArrow=open;dashed=1;strokeColor=#9673A6;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_finance" target="col_client_dcr">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5b" value="[5b] Approve finance scopes&#10;openid profile finance:read&#10;(gated by grant [3])" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.65;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="consent">
+        <mxCell id="e5b" value="[5b] Approve finance scopes&#10;openid profile finance:read&#10;(gated by grant [3])" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.6;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="consent">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e5bread" value="reads scopes[] to enforce [3]" style="endArrow=open;dashed=1;strokeColor=#9673A6;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="consent" target="col_ebay_int">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5c" value="[5c] code &#8596; token exchange&#10;JWT iss=mcp-finance.storageloot.shop" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_finance" target="chatgpt">
+        <mxCell id="e5c" value="[5c] code &#8596; token exchange&#10;JWT iss=mcp-finance.storageloot.shop" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673A6;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.45;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_finance" target="chatgpt">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e5cs" value="refresh token (persona=finance)" style="endArrow=open;dashed=1;strokeColor=#9673A6;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_finance" target="col_rt">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e6a" value="[6] eBay API (user token&#10;with sell.inventory)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1;dashed=1;fontSize=10;fontStyle=2;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_seller" target="ebay">
+        <mxCell id="e7a" value="[7a] DCR /register or CIMD" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7A5A9E;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" edge="1" parent="1" source="chatgpt" target="mcp_admin">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e6b" value="[6] Sell Finances API (user token&#10;with sell.account + sell.finances)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1;dashed=1;fontSize=10;fontStyle=2;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.9;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_finance" target="ebay">
+        <mxCell id="e7as" value="DCR persona=manager stored" style="endArrow=open;dashed=1;strokeColor=#7A5A9E;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_admin" target="col_client_dcr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7b" value="[7b] Approve manager scopes&#10;openid profile identity:read&#10;(subject must be in MANAGER_ADMIN_UIDS)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7A5A9E;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=0;entryDx=0;entryDy=0" edge="1" parent="1" source="user" target="consent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7c" value="[7c] code &#8596; token exchange&#10;JWT iss=mcp-admin.storageloot.shop" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7A5A9E;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#FFFFFF;rounded=0;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_admin" target="chatgpt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7cs" value="refresh token (persona=manager)" style="endArrow=open;dashed=1;strokeColor=#7A5A9E;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="mcp_admin" target="col_rt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8a" value="[8] lists owned agents (persona-filtered)" style="endArrow=open;dashed=1;strokeColor=#D6B656;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="consent" target="col_agents">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8b" value="[8] verifies owner_uid + persona" style="endArrow=open;dashed=1;strokeColor=#D6B656;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="consent" target="col_agent_owners">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8c" value="[8] sessionUid = agent_uid || owner.uid" style="endArrow=open;dashed=1;strokeColor=#D6B656;fontSize=9;labelBackgroundColor=#FFFFFF" edge="1" parent="1" source="consent" target="col_auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6a" value="[6] eBay API (user token&#10;with sell.inventory)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1;dashed=1;fontSize=10;fontStyle=2;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_seller" target="ebay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6b" value="[6] Sell Finances API (user token&#10;with sell.account + sell.finances)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1;dashed=1;fontSize=10;fontStyle=2;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.9;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_finance" target="ebay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6c" value="[6] eBay API via owner token&#10;(manager reads across owner&#8217;s data)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1;dashed=1;fontSize=10;fontStyle=2;labelBackgroundColor=#FFFFFF;rounded=0;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0" edge="1" parent="1" source="mcp_admin" target="ebay">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
