@@ -30,6 +30,21 @@ interface TokenDoc {
 // same user must not both POST to eBay and race on the Firestore write.
 const inFlight = new Map<string, Promise<string>>();
 
+// Agent identities don't link eBay themselves; their owner does. Resolve to
+// whichever uid actually holds the eBay token doc: try the caller first, then
+// fall back to agent_owners/{uid}.owner_uid.
+export async function resolveEbayUid(uid: string): Promise<string> {
+  const db = getDb();
+  const ownTokens = await db
+    .doc(`users/${uid}/integration_tokens/ebay`)
+    .get();
+  if (ownTokens.exists) return uid;
+  const ownerSnap = await db.collection('agent_owners').doc(uid).get();
+  if (!ownerSnap.exists) return uid;
+  const ownerUid = (ownerSnap.data() as { owner_uid?: unknown })?.owner_uid;
+  return typeof ownerUid === 'string' && ownerUid ? ownerUid : uid;
+}
+
 async function loadClientSecret(): Promise<string> {
   if (config.ebay.clientSecretInline) return config.ebay.clientSecretInline;
   if (!config.gcpProject) {
@@ -130,11 +145,12 @@ async function loadValidToken(uid: string): Promise<string> {
 }
 
 export async function getValidEbayAccessToken(uid: string): Promise<string> {
-  const existing = inFlight.get(uid);
+  const ebayUid = await resolveEbayUid(uid);
+  const existing = inFlight.get(ebayUid);
   if (existing) return existing;
-  const p = loadValidToken(uid).finally(() => {
-    inFlight.delete(uid);
+  const p = loadValidToken(ebayUid).finally(() => {
+    inFlight.delete(ebayUid);
   });
-  inFlight.set(uid, p);
+  inFlight.set(ebayUid, p);
   return p;
 }

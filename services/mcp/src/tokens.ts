@@ -100,15 +100,22 @@ export async function consumeRefreshToken(
 
 export async function getEbayUserId(uid: string): Promise<string | undefined> {
   try {
-    const snap = await getDb()
-      .collection('users')
-      .doc(uid)
-      .collection('integrations')
-      .doc('ebay')
+    const db = getDb();
+    const direct = await db
+      .doc(`users/${uid}/integrations/ebay`)
       .get();
-    if (!snap.exists) return undefined;
-    const data = snap.data() as { userId?: string };
-    return data.userId;
+    if (direct.exists) {
+      return (direct.data() as { userId?: string }).userId;
+    }
+    const ownerSnap = await db.collection('agent_owners').doc(uid).get();
+    if (!ownerSnap.exists) return undefined;
+    const ownerUid = (ownerSnap.data() as { owner_uid?: unknown })?.owner_uid;
+    if (typeof ownerUid !== 'string' || !ownerUid) return undefined;
+    const inherited = await db
+      .doc(`users/${ownerUid}/integrations/ebay`)
+      .get();
+    if (!inherited.exists) return undefined;
+    return (inherited.data() as { userId?: string }).userId;
   } catch (err) {
     console.warn('eBay user id lookup failed:', err);
     return undefined;
