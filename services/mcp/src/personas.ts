@@ -16,6 +16,7 @@ export interface Persona {
 
 import { registerPing } from './tools/ping.js';
 import { registerListUserEbayItems } from './tools/listUserEbayItems.js';
+import { registerListUserStorageLootItems } from './tools/listUserStorageLootItems.js';
 import { registerFinancePing } from './tools/financePing.js';
 import { registerFinanceTransactionSummary } from './tools/financeTransactionSummary.js';
 import { registerListIdentities } from './tools/listIdentities.js';
@@ -26,7 +27,11 @@ const SELLER: Persona = {
   issuer: 'https://mcp.storageloot.shop',
   mcpScopes: ['openid', 'profile', 'market:read', 'market:search'],
   requiredEbayScopes: [],
-  toolRegistrations: [registerPing, registerListUserEbayItems],
+  toolRegistrations: [
+    registerPing,
+    registerListUserEbayItems,
+    registerListUserStorageLootItems,
+  ],
 };
 
 const FINANCE: Persona = {
