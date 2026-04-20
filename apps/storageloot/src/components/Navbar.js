@@ -36,7 +36,7 @@ export default function Navbar() {
                     </button>
                   </span>
                 ) : (
-                  <button className="btn btn-outline-light btn-sm" onClick={startEbayLogin}>
+                  <button className="btn btn-outline-light btn-sm" onClick={() => startEbayLogin()}>
                     Connect eBay
                   </button>
                 )}

@@ -74,7 +74,7 @@ export default function MyEbayListingsPage() {
       <div className="container py-5 text-center">
         <h2>Connect your eBay account</h2>
         <p className="text-muted">Link eBay to see your active listings here.</p>
-        <button className="btn btn-sl btn-lg mt-3" onClick={startEbayLogin}>Connect eBay</button>
+        <button className="btn btn-sl btn-lg mt-3" onClick={() => startEbayLogin()}>Connect eBay</button>
       </div>
     );
   }
@@ -87,7 +87,7 @@ export default function MyEbayListingsPage() {
           Your existing eBay link doesn't include permission to read your selling data.
           Re-connecting will grant the required scope.
         </p>
-        <button className="btn btn-sl btn-lg mt-3" onClick={startEbayLogin}>
+        <button className="btn btn-sl btn-lg mt-3" onClick={() => startEbayLogin()}>
           Re-connect eBay
         </button>
       </div>
