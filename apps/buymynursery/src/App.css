@@ -1,0 +1,104 @@
+:root {
+  --baby-blue: #89cff0;
+  --baby-pink: #f4c2c2;
+  --nursery-mint: #b2e2f2;
+  --nursery-primary: #5da9e9;
+  --nursery-secondary: #ffb7c5;
+  --soft-gray: #f8f9fa;
+  --text-main: #4a4a4a;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--text-main);
+}
+
+.navbar {
+  background-color: white !important;
+  border-bottom: 1px solid #eee;
+}
+
+.navbar-brand {
+  font-weight: 800;
+  color: var(--nursery-primary) !important;
+  letter-spacing: -0.5px;
+}
+
+.btn-nursery {
+  background-color: var(--nursery-primary);
+  color: white;
+  border: none;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 10px 20px;
+  transition: all 0.2s;
+}
+
+.btn-nursery:hover {
+  background-color: #4a90e2;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(93, 169, 233, 0.3);
+}
+
+.listing-card {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #f0f0f0;
+}
+
+.listing-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+}
+
+.listing-card .card-img-top {
+  height: 220px;
+  object-fit: cover;
+}
+
+.listing-price {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--nursery-primary);
+}
+
+.listing-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.photo-placeholder {
+  height: 220px;
+  background-color: #f0f7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+}
+
+.category-pill {
+  transition: all 0.2s;
+  border: 1px solid #eee;
+  background: white;
+  font-weight: 500;
+}
+
+.category-pill.active {
+  background-color: var(--nursery-primary) !important;
+  border-color: var(--nursery-primary) !important;
+  color: white !important;
+  box-shadow: 0 4px 10px rgba(93, 169, 233, 0.3);
+}
+
+.bg-light-blue {
+  background-color: #f0f8ff;
+}
+
+.white-space-pre-wrap {
+  white-space: pre-wrap;
+}

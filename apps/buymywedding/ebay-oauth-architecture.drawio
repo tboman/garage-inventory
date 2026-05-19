@@ -1,0 +1,99 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="title" value="Buy My Wedding - eBay OAuth Architecture" style="text;fontSize=18;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="240" y="5" width="640" height="35" as="geometry"/>
+    </mxCell>
+    <mxCell id="browser" value="Browser (React SPA)" style="rounded=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="20" y="60" width="260" height="500" as="geometry"/>
+    </mxCell>
+    <mxCell id="login" value="Login.tsx&#xa;&quot;Sign in with eBay&quot;" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" vertex="1" parent="browser">
+      <mxGeometry x="30" y="50" width="200" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="callbackHandler" value="/auth/callback&#xa;signInWithCustomToken" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" vertex="1" parent="browser">
+      <mxGeometry x="30" y="280" width="200" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="dashUI" value="Dashboard UI&#xa;(Photos, Listings, Tags)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" vertex="1" parent="browser">
+      <mxGeometry x="30" y="410" width="200" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="firebase" value="Firebase Platform" style="rounded=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="380" y="40" width="360" height="540" as="geometry"/>
+    </mxCell>
+    <mxCell id="hosting" value="Firebase Hosting (serves SPA)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="firebase">
+      <mxGeometry x="20" y="42" width="320" height="35" as="geometry"/>
+    </mxCell>
+    <mxCell id="functions" value="Cloud Functions" style="rounded=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="firebase">
+      <mxGeometry x="20" y="100" width="320" height="200" as="geometry"/>
+    </mxCell>
+    <mxCell id="authRedirect" value="ebayAuthRedirect" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="functions">
+      <mxGeometry x="25" y="38" width="270" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="authCallback" value="ebayAuthCallback" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="functions">
+      <mxGeometry x="25" y="120" width="270" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="fbAuth" value="Firebase Auth&#xa;(Custom Tokens)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="firebase">
+      <mxGeometry x="20" y="330" width="145" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="firestore" value="Firestore&#xa;(ebayTokens, listings)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="firebase">
+      <mxGeometry x="195" y="330" width="145" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="cloudStorage" value="Cloud Storage&#xa;(Photos)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="firebase">
+      <mxGeometry x="20" y="415" width="145" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="secretMgr" value="Secret Manager&#xa;(EBAY_CLIENT_SECRET)" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="firebase">
+      <mxGeometry x="195" y="415" width="145" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="ebay" value="eBay Platform" style="rounded=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="840" y="60" width="280" height="380" as="geometry"/>
+    </mxCell>
+    <mxCell id="ebayConsent" value="OAuth Consent Page&#xa;auth.ebay.com" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;" vertex="1" parent="ebay">
+      <mxGeometry x="20" y="50" width="240" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="ebayToken" value="Token API&#xa;api.ebay.com/.../token" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;" vertex="1" parent="ebay">
+      <mxGeometry x="20" y="160" width="240" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="ebayIdentity" value="Identity API&#xa;apiz.ebay.com/.../user" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;" vertex="1" parent="ebay">
+      <mxGeometry x="20" y="275" width="240" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="e1" value="1. Sign in" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="login" target="authRedirect">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" value="2. Redirect" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authRedirect" target="ebayConsent">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e3" value="3. Auth code" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="ebayConsent" target="authCallback">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e4" value="4. Exchange code" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authCallback" target="ebayToken">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e5" value="5. Get user info" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authCallback" target="ebayIdentity">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e6" value="6. Create user + mint token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authCallback" target="fbAuth">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e7" value="7. Store eBay tokens" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authCallback" target="firestore">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e8" value="8. Redirect with token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="authCallback" target="callbackHandler">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e9" value="9. signInWithCustomToken" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=default;" edge="1" parent="1" source="callbackHandler" target="fbAuth">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e10" value="injects secret" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed=1;fontSize=9;fontColor=#999999;labelBackgroundColor=default;" edge="1" parent="1" source="secretMgr" target="authCallback">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed=1;" edge="1" parent="1" source="dashUI" target="firestore">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#999999;strokeWidth=1;dashed=1;" edge="1" parent="1" source="dashUI" target="cloudStorage">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend" value="Solid arrows: OAuth sign-in flow (numbered 1-9)     Dashed arrows: runtime data access" style="text;fontSize=11;align=center;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="200" y="595" width="720" height="25" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>

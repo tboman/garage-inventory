@@ -1,0 +1,44 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": {
+    "source": "functions"
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/ebayAuthRedirect",
+        "function": "ebayAuthRedirect"
+      },
+      {
+        "source": "/ebayAuthCallback",
+        "function": "ebayAuthCallback"
+      },
+      {
+        "source": "/ebayNotification",
+        "function": "ebayNotification"
+      },
+      {
+        "source": "/ebayMyListings",
+        "function": "ebayMyListings"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

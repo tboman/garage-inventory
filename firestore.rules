@@ -66,5 +66,34 @@ service cloud.firestore {
         && (!('photo' in request.resource.data) || request.resource.data.photo == null || (request.resource.data.photo is string && request.resource.data.photo.size() <= 2000));
       allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
     }
+
+    match /nursery_listings/{listingId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 2000
+        && request.resource.data.price is number
+        && request.resource.data.price > 0
+        && request.resource.data.condition in ['new', 'like_new', 'good', 'fair', 'poor']
+        && request.resource.data.category in ['plants', 'seeds', 'tools', 'supplies', 'pots', 'furniture', 'other']
+        && request.resource.data.status in ['active', 'sold', 'expired', 'draft']
+        && request.resource.data.photos.size() <= 10;
+      allow update: if request.auth != null && resource.data.sellerId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.sellerId == request.auth.uid;
+    }
+
+    match /nursery_groups/{groupId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80;
+      allow update: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+    }
   }
 }
