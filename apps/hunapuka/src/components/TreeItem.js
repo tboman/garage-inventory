@@ -5,18 +5,27 @@ import PhotoGallery from './PhotoGallery';
 
 const ItemTypes = { ITEM: 'item' };
 
+// Items created within this window keep their action buttons on screen; older
+// ones tuck them behind the subtle toggle to keep an established tree quiet.
+const RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+
 const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem, addItem, onPhotoAdded, onPhotoRemoved, onError, focusItemId, focusAncestorIds, onClearFocus }) => {
   const isFocused = focusItemId === item.id;
   const isOnFocusPath = focusAncestorIds && focusAncestorIds.has(item.id);
+  // Items predating the createdAt field have no timestamp — treat them as old.
+  const isRecent = item.createdAt != null && Date.now() - item.createdAt < RECENT_WINDOW_MS;
 
   const [isOpen, setIsOpen] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [actionsRevealed, setActionsRevealed] = useState(false);
   const [editedName, setEditedName] = useState(item.name);
   const [editedDescription, setEditedDescription] = useState(item.description);
   const [newChildName, setNewChildName] = useState('');
   const addInputRef = useRef(null);
   const itemRef = useRef(null);
+
+  const showActions = isRecent || actionsRevealed;
 
   // Ensure ancestors of the focused item are expanded
   useEffect(() => {
@@ -154,37 +163,51 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
               </div>
               {item.description && <p className="tree-item-desc mb-0">{item.description}</p>}
             </div>
-            <div className="tree-item-actions">
+            <div className={`tree-item-actions${showActions ? '' : ' tree-item-actions-collapsed'}`}>
               {isFocused && (
                 <button className="btn btn-outline-warning btn-sm" onClick={onClearFocus} title="Clear highlight">
                   <i className="fas fa-times"></i>
                 </button>
               )}
-              <button className="btn btn-outline-success btn-sm" onClick={() => setIsAdding(!isAdding)} title="Add item here">
-                <i className="fas fa-plus"></i>
-              </button>
-              <PhotoUpload item={item} onPhotoAdded={onPhotoAdded} onError={onError} />
-              <button
-                className="btn btn-outline-secondary btn-sm"
-                title="Sell on StorageLoot"
-                onClick={() => {
-                  const params = new URLSearchParams({
-                    title: item.name,
-                    description: item.description || '',
-                    photos: JSON.stringify(item.photos || []),
-                    sourceItemId: item.id,
-                  });
-                  window.open(`https://storageloot.shop/import?${params.toString()}`, '_blank');
-                }}
-              >
-                &#x1F4B2;
-              </button>
-              <button className="btn btn-outline-secondary btn-sm" onClick={() => setIsEditing(true)} title="Edit">
-                <i className="fas fa-edit"></i>
-              </button>
-              <button className="btn btn-outline-danger btn-sm" onClick={() => deleteItem(item.id)} title="Delete">
-                <i className="fas fa-trash"></i>
-              </button>
+              {!isRecent && (
+                <button
+                  className="tree-item-actions-toggle"
+                  onClick={() => setActionsRevealed(!actionsRevealed)}
+                  title={showActions ? 'Hide actions' : 'Show actions'}
+                  aria-expanded={showActions}
+                >
+                  <i className="fas fa-ellipsis"></i>
+                </button>
+              )}
+              {showActions && (
+                <>
+                  <button className="btn btn-outline-success btn-sm" onClick={() => setIsAdding(!isAdding)} title="Add item here">
+                    <i className="fas fa-plus"></i>
+                  </button>
+                  <PhotoUpload item={item} onPhotoAdded={onPhotoAdded} onError={onError} />
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    title="Sell on StorageLoot"
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        title: item.name,
+                        description: item.description || '',
+                        photos: JSON.stringify(item.photos || []),
+                        sourceItemId: item.id,
+                      });
+                      window.open(`https://storageloot.shop/import?${params.toString()}`, '_blank');
+                    }}
+                  >
+                    &#x1F4B2;
+                  </button>
+                  <button className="btn btn-outline-secondary btn-sm" onClick={() => setIsEditing(true)} title="Edit">
+                    <i className="fas fa-edit"></i>
+                  </button>
+                  <button className="btn btn-outline-danger btn-sm" onClick={() => deleteItem(item.id)} title="Delete">
+                    <i className="fas fa-trash"></i>
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}

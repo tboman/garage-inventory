@@ -17,6 +17,15 @@ function itemDoc(id) {
   return doc(db, 'users', getUid(), 'items', id);
 }
 
+// createdAt may be an epoch number (written by this client) or a Firestore
+// Timestamp (if ever written server-side). Missing on items predating the field.
+function toMillis(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  return null;
+}
+
 export async function fetchItems() {
   const snapshot = await getDocs(itemsCol());
   return snapshot.docs.map(d => ({
@@ -24,12 +33,14 @@ export async function fetchItems() {
     ...d.data(),
     locationId: d.data().locationId ?? null,
     order: d.data().order ?? 0,
+    createdAt: toMillis(d.data().createdAt),
     photos: d.data().photos || [],
   }));
 }
 
 export async function createItem(newItem) {
-  const { id: _ignored, ...data } = newItem;
+  const { id: _ignored, ...rest } = newItem;
+  const data = { ...rest, createdAt: Date.now() };
   const docRef = await addDoc(itemsCol(), data);
   return { id: docRef.id, ...data };
 }
