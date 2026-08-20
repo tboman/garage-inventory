@@ -13,6 +13,7 @@ import SearchResults from './components/SearchResults';
 import LoginScreen from './components/LoginScreen';
 import BrowseMode from './components/BrowseMode';
 import PlacementEditor from './components/PlacementEditor';
+import AccountSection from './components/AccountSection';
 import { hasValidGoogleToken, subscribeGoogleToken, getGoogleAccessToken } from './googleToken';
 import { useAuth } from './contexts/AuthContext';
 
@@ -20,8 +21,9 @@ import { useAuth } from './contexts/AuthContext';
 // browser back button walks back up the containers you drilled into.
 function readView() {
   const params = new URLSearchParams(window.location.search);
+  const view = params.get('view');
   return {
-    view: params.get('view') === 'browse' ? 'browse' : 'manage',
+    view: view === 'browse' || view === 'account' ? view : 'manage',
     at: params.get('at') || null,
   };
 }
@@ -33,6 +35,9 @@ function writeView(view, at, { replace = false } = {}) {
     params.set('view', 'browse');
     if (at) params.set('at', at);
     else params.delete('at');
+  } else if (view === 'account') {
+    params.set('view', 'account');
+    params.delete('at');
   } else {
     params.delete('view');
     params.delete('at');
@@ -107,14 +112,13 @@ function App() {
 
   const addItem = async ({ name, locationId, description }) => {
     try {
-      let newOrder = 0;
-      setItems(prev => {
-        const siblings = prev.filter(item => item.locationId === locationId);
-        newOrder = siblings.length > 0
-          ? Math.max(...siblings.map(s => s.order)) + 1
-          : 0;
-        return prev;
-      });
+      // New items go to the top of their location, so the thing you just added
+      // is the thing you are looking at. order is only a sort key, so running
+      // negative as items are added is fine.
+      const siblings = items.filter(i => i.locationId === locationId);
+      const newOrder = siblings.length > 0
+        ? Math.min(...siblings.map(s => s.order)) - 1
+        : 0;
 
       const newItem = {
         name,
@@ -256,6 +260,12 @@ function App() {
     }
   };
 
+  const enterAccount = () => {
+    setViewMode('account');
+    setArranging(null);
+    writeView('account', null);
+  };
+
   const enterManage = () => {
     setViewMode('manage');
     setArranging(null);
@@ -325,6 +335,13 @@ function App() {
               >
                 <i className="fas fa-images me-1"></i>Browse
               </button>
+              <button
+                type="button"
+                className={`btn ${viewMode === 'account' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={enterAccount}
+              >
+                <i className="fas fa-user me-1"></i>Account
+              </button>
             </div>
             <span className="text-muted small d-none d-sm-inline">{user.displayName}</span>
             <button className="btn btn-outline-secondary btn-sm" onClick={logOut}>
@@ -351,7 +368,9 @@ function App() {
           </div>
         )}
 
-        {loading ? (
+        {viewMode === 'account' ? (
+          <AccountSection user={user} onError={handleError} />
+        ) : loading ? (
           <div className="loading-container">
             <div className="spinner-border text-secondary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>

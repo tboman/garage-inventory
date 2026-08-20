@@ -1,4 +1,4 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { arrayUnion, arrayRemove } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { uploadFileToDrive, deleteFileFromDrive, extractFileIdFromUrl } from './driveApi';
@@ -15,6 +15,24 @@ function itemsCol() {
 
 function itemDoc(id) {
   return doc(db, 'users', getUid(), 'items', id);
+}
+
+// Who this inventory is shared with, by email. Firestore rules match these
+// against request.auth.token.email; a Firebase uid would be unusable here
+// because nobody can look up another person's uid.
+function sharingDoc() {
+  return doc(db, 'users', getUid(), 'sharing', 'config');
+}
+
+export async function fetchSharedEmails() {
+  const snap = await getDoc(sharingDoc());
+  if (!snap.exists()) return [];
+  const emails = snap.data().emails;
+  return Array.isArray(emails) ? emails : [];
+}
+
+export async function saveSharedEmails(emails) {
+  await setDoc(sharingDoc(), { emails }, { merge: true });
 }
 
 // createdAt may be an epoch number (written by this client) or a Firestore

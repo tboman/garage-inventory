@@ -2,7 +2,27 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // An inventory owner lists the emails they share with; the viewer's own
+    // verified Google address on their ID token is matched against that list.
+    // Emails rather than uids because nobody can look up another person's uid.
+    function sharedWith(userId) {
+      return request.auth.token.email != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/users/$(userId)/sharing/config)
+        && request.auth.token.email.lower()
+             in get(/databases/$(database)/documents/users/$(userId)/sharing/config).data.emails;
+    }
+
     match /users/{userId}/items/{itemId} {
+      // Sharing grants read only; writing stays with the owner.
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || sharedWith(userId));
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/sharing/{docId} {
+      // Only the owner sees or edits their share list. Rule get() calls run with
+      // full privileges, so viewers never need read access here.
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 

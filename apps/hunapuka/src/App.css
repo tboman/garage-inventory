@@ -548,3 +548,16 @@
     width: 100%;
   }
 }
+
+/* ---------- Account ---------- */
+
+.account-card {
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+}
+
+.share-list .list-group-item {
+  background: transparent;
+}
