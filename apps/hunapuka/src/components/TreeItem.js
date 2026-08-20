@@ -9,7 +9,7 @@ const ItemTypes = { ITEM: 'item' };
 // ones tuck them behind the subtle toggle to keep an established tree quiet.
 const RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
-const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem, addItem, onPhotoAdded, onPhotoRemoved, onError, focusItemId, focusAncestorIds, onClearFocus }) => {
+const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem, addItem, onArrange, onPhotoAdded, onPhotoRemoved, onError, focusItemId, focusAncestorIds, onClearFocus }) => {
   const isFocused = focusItemId === item.id;
   const isOnFocusPath = focusAncestorIds && focusAncestorIds.has(item.id);
   // Items predating the createdAt field have no timestamp — treat them as old.
@@ -184,6 +184,11 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
                   <button className="btn btn-outline-success btn-sm" onClick={() => setIsAdding(!isAdding)} title="Add item here">
                     <i className="fas fa-plus"></i>
                   </button>
+                  {children.length > 0 && (
+                    <button className="btn btn-outline-info btn-sm" onClick={() => onArrange(item.id)} title="Arrange contents">
+                      <i className="fas fa-table-cells-large"></i>
+                    </button>
+                  )}
                   <PhotoUpload item={item} onPhotoAdded={onPhotoAdded} onError={onError} />
                   <button
                     className="btn btn-outline-secondary btn-sm"
@@ -246,6 +251,7 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
               updateItem={updateItem}
               deleteItem={deleteItem}
               addItem={addItem}
+              onArrange={onArrange}
               onPhotoAdded={onPhotoAdded}
               onPhotoRemoved={onPhotoRemoved}
               onError={onError}

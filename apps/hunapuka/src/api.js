@@ -28,14 +28,20 @@ function toMillis(value) {
 
 export async function fetchItems() {
   const snapshot = await getDocs(itemsCol());
-  return snapshot.docs.map(d => ({
-    id: d.id,
-    ...d.data(),
-    locationId: d.data().locationId ?? null,
-    order: d.data().order ?? 0,
-    createdAt: toMillis(d.data().createdAt),
-    photos: d.data().photos || [],
-  }));
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      locationId: data.locationId ?? null,
+      order: data.order ?? 0,
+      createdAt: toMillis(data.createdAt),
+      // Fractions (0-1) of the parent container canvas; null means unplaced.
+      x: typeof data.x === 'number' ? data.x : null,
+      y: typeof data.y === 'number' ? data.y : null,
+      photos: data.photos || [],
+    };
+  });
 }
 
 export async function createItem(newItem) {
@@ -50,7 +56,16 @@ export async function updateItem(id, fields) {
 }
 
 export async function moveItem(id, locationId, order) {
-  await updateDoc(itemDoc(id), { locationId, order });
+  // Coordinates are relative to the old parent canvas, so reparenting voids them.
+  await updateDoc(itemDoc(id), { locationId, order, x: null, y: null });
+}
+
+export async function placeItem(id, x, y) {
+  await updateDoc(itemDoc(id), { x, y });
+}
+
+export async function unplaceItem(id) {
+  await updateDoc(itemDoc(id), { x: null, y: null });
 }
 
 export async function deleteItem(id) {

@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { extractFileIdFromUrl } from '../driveApi';
-import { getGoogleAccessToken } from '../googleToken';
+import { getCachedGoogleToken, subscribeGoogleToken } from '../googleToken';
 
 const blobCache = new Map();
 
 const DriveImage = ({ src, alt, ...props }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [error, setError] = useState(false);
+  // Bumped whenever the Drive token changes, so reconnecting retries every image.
+  const [tokenEpoch, setTokenEpoch] = useState(0);
 
   const fileId = src ? extractFileIdFromUrl(src) : null;
+
+  useEffect(() => subscribeGoogleToken(() => setTokenEpoch(n => n + 1)), []);
 
   useEffect(() => {
     if (!fileId) return;
@@ -18,11 +22,20 @@ const DriveImage = ({ src, alt, ...props }) => {
       return;
     }
 
+    // Rendering must never open a sign-in popup: a screen full of photos mounts
+    // many of these at once, and a popup with no user gesture behind it is
+    // blocked anyway. Show the placeholder and wait for the reconnect banner.
+    const token = getCachedGoogleToken();
+    if (!token) {
+      setError(true);
+      return;
+    }
+
     let cancelled = false;
+    setError(false);
 
     (async () => {
       try {
-        const token = await getGoogleAccessToken();
         const res = await fetch(
           `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -38,7 +51,7 @@ const DriveImage = ({ src, alt, ...props }) => {
     })();
 
     return () => { cancelled = true; };
-  }, [fileId]);
+  }, [fileId, tokenEpoch]);
 
   if (error) {
     return <div {...props} style={{ ...props.style, background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-image text-muted"></i></div>;
