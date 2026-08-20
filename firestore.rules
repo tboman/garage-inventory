@@ -26,6 +26,24 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Reverse index so a recipient can discover who shared with them, which they
+    // cannot do by searching other people's private share lists. Keyed by the
+    // recipient's address, one document per sharer.
+    match /share_index/{email}/owners/{ownerUid} {
+      // Only the person whose address keys this branch can read it.
+      allow read: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == email;
+      // The document id is the sharer's uid, so only they can add or change
+      // their own entry, and ownerEmail is pinned to their token so an entry
+      // cannot claim to come from someone else.
+      allow create, update: if request.auth != null
+        && request.auth.uid == ownerUid
+        && request.resource.data.ownerEmail == request.auth.token.email.lower()
+        && request.resource.data.keys().hasOnly(['ownerEmail', 'ownerName', 'sharedAt']);
+      allow delete: if request.auth != null && request.auth.uid == ownerUid;
+    }
+
     match /users/{userId}/integrations/{provider} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if false;

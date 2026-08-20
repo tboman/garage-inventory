@@ -3,7 +3,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { fetchItems, createItem, updateItem as apiUpdateItem, moveItem as apiMoveItem, deleteItem as apiDeleteItem, placeItem as apiPlaceItem, unplaceItem as apiUnplaceItem } from './api';
+import { fetchItems, fetchItemsFor, createItem, updateItem as apiUpdateItem, moveItem as apiMoveItem, deleteItem as apiDeleteItem, placeItem as apiPlaceItem, unplaceItem as apiUnplaceItem } from './api';
 import TreeItem from './components/TreeItem';
 import RootDropZone from './components/RootDropZone';
 import AddItemForm from './components/AddItemForm';
@@ -62,6 +62,9 @@ function App() {
   const [browseAt, setBrowseAt] = useState(() => readView().at);
   // null when not arranging; { id } where id is a container id or null for root.
   const [arranging, setArranging] = useState(null);
+  // null while looking at your own inventory; otherwise the owner whose
+  // inventory is on screen, which is always read only.
+  const [activeOwner, setActiveOwner] = useState(null);
   const [driveConnected, setDriveConnected] = useState(() => hasValidGoogleToken());
   const [reconnecting, setReconnecting] = useState(false);
 
@@ -72,11 +75,11 @@ function App() {
       return;
     }
     setLoading(true);
-    fetchItems()
+    (activeOwner ? fetchItemsFor(activeOwner.uid) : fetchItems())
       .then(data => setItems(data))
       .catch(err => setError(`Failed to load items: ${err.message}`))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, activeOwner]);
 
   useEffect(() => {
     const onPop = () => {
@@ -266,7 +269,31 @@ function App() {
     writeView('account', null);
   };
 
+  // A shared inventory is someone else's data, so it opens in Browse and every
+  // editing surface stays out of reach until you come back to your own.
+  const viewSharedInventory = (owner) => {
+    setActiveOwner(owner);
+    setBrowseAt(null);
+    setArranging(null);
+    setViewMode('browse');
+    writeView('browse', null);
+  };
+
+  const returnToMyInventory = () => {
+    setActiveOwner(null);
+    setBrowseAt(null);
+    setArranging(null);
+    setViewMode('manage');
+    writeView('manage', null);
+  };
+
   const enterManage = () => {
+    // Reached from the header and from Browse's own exit button, so this is the
+    // one place that has to refuse to open the editor on someone else's items.
+    if (activeOwner) {
+      returnToMyInventory();
+      return;
+    }
     setViewMode('manage');
     setArranging(null);
     writeView('manage', null);
@@ -352,6 +379,22 @@ function App() {
 
         <ErrorAlert message={error} onDismiss={() => setError(null)} />
 
+        {activeOwner && (
+          <div className="alert alert-info d-flex align-items-center gap-2 py-2 px-3">
+            <i className="fas fa-eye"></i>
+            <span className="small flex-grow-1">
+              Viewing <strong>{activeOwner.ownerName || activeOwner.ownerEmail}</strong>'s
+              inventory. Read only.
+            </span>
+            <button
+              className="btn btn-outline-secondary btn-sm flex-shrink-0"
+              onClick={returnToMyInventory}
+            >
+              Back to mine
+            </button>
+          </div>
+        )}
+
         {!driveConnected && (
           <div className="alert alert-warning d-flex align-items-center gap-2 py-2 px-3">
             <i className="fas fa-image"></i>
@@ -369,7 +412,12 @@ function App() {
         )}
 
         {viewMode === 'account' ? (
-          <AccountSection user={user} onError={handleError} />
+          <AccountSection
+            user={user}
+            onError={handleError}
+            onViewShared={viewSharedInventory}
+            activeOwnerUid={activeOwner ? activeOwner.uid : null}
+          />
         ) : loading ? (
           <div className="loading-container">
             <div className="spinner-border text-secondary mb-3" role="status">

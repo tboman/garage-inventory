@@ -1,39 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { fetchSharedEmails, saveSharedEmails } from '../api';
+import { ensureShareIndex, addShare, removeShare, fetchSharedWithMe } from '../api';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Rules read this whole list on every access check, so keep it small.
 const MAX_SHARES = 50;
 
-const AccountSection = ({ user, onError }) => {
+const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
   const [emails, setEmails] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [sharedWithMe, setSharedWithMe] = useState([]);
+  // Tracked apart so a failure on one list does not blank the other.
+  const [loadingMine, setLoadingMine] = useState(true);
+  const [loadingTheirs, setLoadingTheirs] = useState(true);
   const [input, setInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchSharedEmails()
+    ensureShareIndex()
       .then(list => { if (!cancelled) setEmails(list); })
-      .catch(err => onError(`Failed to load sharing list: ${err.message}`))
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(err => onError(`Failed to load your share list: ${err.message}`))
+      .finally(() => { if (!cancelled) setLoadingMine(false); });
+    fetchSharedWithMe()
+      .then(list => { if (!cancelled) setSharedWithMe(list); })
+      .catch(err => onError(`Failed to load inventories shared with you: ${err.message}`))
+      .finally(() => { if (!cancelled) setLoadingTheirs(false); });
     return () => { cancelled = true; };
   }, [onError]);
 
-  const persist = async (next, snapshot) => {
-    setSaving(true);
-    try {
-      await saveSharedEmails(next);
-    } catch (err) {
-      setEmails(snapshot);
-      onError(`Failed to save sharing list: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const addEmail = (e) => {
+  const addEmail = async (e) => {
     e.preventDefault();
     setNotice(null);
 
@@ -57,17 +52,31 @@ const AccountSection = ({ user, onError }) => {
     }
 
     const snapshot = emails;
-    const next = [...emails, value];
-    setEmails(next);
+    setEmails([...emails, value]);
     setInput('');
-    persist(next, snapshot);
+    setSaving(true);
+    try {
+      setEmails(await addShare(value));
+    } catch (err) {
+      setEmails(snapshot);
+      onError(`Failed to share: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const removeEmail = (value) => {
+  const removeEmail = async (value) => {
     const snapshot = emails;
-    const next = emails.filter(e => e !== value);
-    setEmails(next);
-    persist(next, snapshot);
+    setEmails(emails.filter(e => e !== value));
+    setSaving(true);
+    try {
+      setEmails(await removeShare(value));
+    } catch (err) {
+      setEmails(snapshot);
+      onError(`Failed to stop sharing: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -80,6 +89,45 @@ const AccountSection = ({ user, onError }) => {
         <div className="text-muted small mt-1">
           This is the address other people add to share their inventory with you.
         </div>
+      </div>
+
+      <div className="account-card mb-3">
+        <h3 className="h6 mb-1">Shared with me</h3>
+        <p className="text-muted small mb-3">
+          Inventories other people have shared with you. You can look, not change.
+        </p>
+
+        {loadingTheirs ? (
+          <div className="text-muted small">Loading...</div>
+        ) : sharedWithMe.length === 0 ? (
+          <div className="text-muted small fst-italic">
+            Nobody has shared an inventory with you yet.
+          </div>
+        ) : (
+          <ul className="list-group list-group-flush share-list">
+            {sharedWithMe.map(owner => (
+              <li key={owner.uid} className="list-group-item d-flex align-items-center gap-2 px-0">
+                <i className="fas fa-box-open text-muted"></i>
+                <span className="flex-grow-1 text-break">
+                  {owner.ownerName || owner.ownerEmail}
+                  {owner.ownerName && (
+                    <span className="text-muted small d-block">{owner.ownerEmail}</span>
+                  )}
+                </span>
+                {activeOwnerUid === owner.uid ? (
+                  <span className="badge bg-secondary flex-shrink-0">Viewing</span>
+                ) : (
+                  <button
+                    className="btn btn-outline-primary btn-sm flex-shrink-0"
+                    onClick={() => onViewShared(owner)}
+                  >
+                    <i className="fas fa-eye me-1"></i>View
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="account-card">
@@ -97,12 +145,12 @@ const AccountSection = ({ user, onError }) => {
             placeholder="their-google-account@example.com"
             value={input}
             onChange={e => setInput(e.target.value)}
-            disabled={loading}
+            disabled={loadingMine}
           />
           <button
             type="submit"
             className="btn btn-primary btn-sm flex-shrink-0"
-            disabled={loading || saving || !input.trim()}
+            disabled={loadingMine || saving || !input.trim()}
           >
             <i className="fas fa-plus me-1"></i>Share
           </button>
@@ -110,7 +158,7 @@ const AccountSection = ({ user, onError }) => {
 
         {notice && <div className="alert alert-warning py-2 px-3 small">{notice}</div>}
 
-        {loading ? (
+        {loadingMine ? (
           <div className="text-muted small">Loading...</div>
         ) : emails.length === 0 ? (
           <div className="text-muted small fst-italic">
