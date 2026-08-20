@@ -20,6 +20,8 @@ const ContainerCanvas = ({
   onPinPointerDown,
   onPinPointerMove,
   onPinPointerUp,
+  onPinPointerCancel,
+  titleFor,
   hint,
 }) => {
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
@@ -54,14 +56,16 @@ const ContainerCanvas = ({
             'canvas-pin' +
             (highlightId === item.id ? ' canvas-pin-highlight' : '') +
             (draggingId === item.id ? ' canvas-pin-dragging' : '') +
-            (onPinPointerDown ? ' canvas-pin-draggable' : '')
+            (onPinPointerDown ? ' canvas-pin-draggable' : '') +
+            (item.isAuto ? ' canvas-pin-auto' : '')
           }
           style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%` }}
-          title={item.name}
+          title={titleFor ? titleFor(item) : item.name}
           onClick={onPinClick ? () => onPinClick(item) : undefined}
           onPointerDown={onPinPointerDown ? (e) => onPinPointerDown(e, item) : undefined}
           onPointerMove={onPinPointerMove}
           onPointerUp={onPinPointerUp}
+          onPointerCancel={onPinPointerCancel}
         >
           <span className="canvas-pin-thumb">
             {item.photos && item.photos.length > 0 ? (

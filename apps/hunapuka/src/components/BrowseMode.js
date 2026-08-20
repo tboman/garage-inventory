@@ -1,16 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ContainerCanvas from './ContainerCanvas';
 import DriveImage from './DriveImage';
+import PhotoViewer from './PhotoViewer';
+import { resolvePlacements } from '../autoLayout';
 
 /**
  * Read-only graphical browser. One container fills the screen as its own photo
- * canvas; pins with a child count descend, leaves open a detail panel. Nothing
+ * canvas; pins with a child count descend, leaves open a full-frame photo
+ * viewer that steps through every photo in the location. Nothing
  * in here writes to Firestore.
  */
 const BrowseMode = ({ items, at, onNavigate, onExit }) => {
   const [query, setQuery] = useState('');
   const [highlightId, setHighlightId] = useState(null);
-  const [detail, setDetail] = useState(null);
+  // Index into `strip`, or null when the canvas is showing.
+  const [viewIndex, setViewIndex] = useState(null);
 
   const childCounts = useMemo(() => {
     const counts = new Map();
@@ -38,33 +42,73 @@ const BrowseMode = ({ items, at, onNavigate, onExit }) => {
     return out;
   }, [containerId, items]);
 
-  const children = useMemo(
-    () => items
+  const pins = useMemo(() => {
+    const children = items
       .filter(i => i.locationId === containerId)
       .sort((a, b) => a.order - b.order)
-      .map(i => ({ ...i, childCount: childCounts.get(i.id) || 0 })),
-    [items, containerId, childCounts]
-  );
+      .map(i => ({ ...i, childCount: childCounts.get(i.id) || 0 }));
+    return resolvePlacements(children);
+  }, [items, containerId, childCounts]);
 
-  const placed = children.filter(i => i.x != null && i.y != null);
-  const unplaced = children.filter(i => i.x == null || i.y == null);
   const backdrop = container && container.photos && container.photos.length > 0
     ? container.photos[0]
     : null;
 
+  // Every photo in this location, in sibling order. Items with no photo still
+  // get an entry so arrowing left and right reaches everything that is here.
+  const strip = useMemo(() => {
+    const out = [];
+    for (const item of pins) {
+      const photos = item.photos || [];
+      if (photos.length === 0) out.push({ src: null, item });
+      else for (const src of photos) out.push({ src, item });
+    }
+    return out;
+  }, [pins]);
+
   const go = (id, highlight = null) => {
     setHighlightId(highlight);
-    setDetail(null);
+    setViewIndex(null);
     onNavigate(id);
   };
 
   const openItem = (item) => {
     if ((childCounts.get(item.id) || 0) > 0) {
       go(item.id);
-    } else {
-      setDetail(item);
+      return;
     }
+    const idx = strip.findIndex(e => e.item.id === item.id);
+    if (idx >= 0) setViewIndex(idx);
   };
+
+  const step = (delta) => {
+    setViewIndex(i => (i == null || strip.length === 0)
+      ? i
+      : (i + delta + strip.length) % strip.length);
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      // Let the search field keep its own arrow and escape handling.
+      if (e.target && e.target.closest && e.target.closest('input, textarea, select')) return;
+
+      if (e.key === 'Escape') {
+        if (viewIndex != null) setViewIndex(null);
+        else if (container) onNavigate(container.locationId);
+        return;
+      }
+      if (viewIndex == null || strip.length === 0) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setViewIndex(i => (i - 1 + strip.length) % strip.length);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setViewIndex(i => (i + 1) % strip.length);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewIndex, container, strip.length, onNavigate]);
 
   const pathOf = (item) => {
     const names = [];
@@ -89,15 +133,15 @@ const BrowseMode = ({ items, at, onNavigate, onExit }) => {
   return (
     <div className="browse-mode">
       <div className="browse-bar">
-        <nav className="browse-crumbs">
+        <nav className="crumbs">
           <button className="btn btn-link btn-sm p-0" onClick={() => go(null)} title="Top level">
             <i className="fas fa-home"></i>
           </button>
           {trail.map((item, idx) => (
             <span key={item.id}>
-              <span className="browse-crumb-sep">/</span>
-              {idx === trail.length - 1 ? (
-                <span className="browse-crumb-current">{item.name}</span>
+              <span className="crumb-sep">/</span>
+              {idx === trail.length - 1 && viewIndex == null ? (
+                <span className="crumb-current">{item.name}</span>
               ) : (
                 <button className="btn btn-link btn-sm p-0" onClick={() => go(item.id)}>
                   {item.name}
@@ -105,6 +149,12 @@ const BrowseMode = ({ items, at, onNavigate, onExit }) => {
               )}
             </span>
           ))}
+          {viewIndex != null && strip[viewIndex] && (
+            <span>
+              <span className="crumb-sep">/</span>
+              <span className="crumb-current">{strip[viewIndex].item.name}</span>
+            </span>
+          )}
         </nav>
         <input
           type="search"
@@ -154,70 +204,24 @@ const BrowseMode = ({ items, at, onNavigate, onExit }) => {
             <p className="text-muted small mb-2">{container.description}</p>
           )}
 
-          <ContainerCanvas
-            backdrop={backdrop}
-            pins={placed}
-            highlightId={highlightId}
-            onPinClick={openItem}
-            hint={
-              children.length === 0
-                ? 'Nothing in here yet'
-                : 'Nothing placed here yet - arrange it in Manage mode'
-            }
-          />
-
-          {unplaced.length > 0 && (
-            <div className="browse-unplaced">
-              <div className="browse-unplaced-title">
-                Not placed on the {backdrop ? 'photo' : 'canvas'} ({unplaced.length})
-              </div>
-              <div className="browse-unplaced-items">
-                {unplaced.map(item => (
-                  <button
-                    key={item.id}
-                    className={`tray-tile${highlightId === item.id ? ' tray-tile-highlight' : ''}`}
-                    onClick={() => openItem(item)}
-                    title={item.name}
-                  >
-                    <span className="tray-tile-thumb">
-                      {item.photos && item.photos.length > 0
-                        ? <DriveImage src={item.photos[0]} alt={item.name} />
-                        : <i className="fas fa-box"></i>}
-                      {item.childCount > 0 && <span className="canvas-pin-count">{item.childCount}</span>}
-                    </span>
-                    <span className="tray-tile-label">{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+          {viewIndex != null ? (
+            <PhotoViewer
+              entries={strip}
+              index={viewIndex}
+              onStep={step}
+              onClose={() => setViewIndex(null)}
+              onOpenContainer={(item) => go(item.id)}
+            />
+          ) : (
+            <ContainerCanvas
+              backdrop={backdrop}
+              pins={pins}
+              highlightId={highlightId}
+              onPinClick={openItem}
+              hint="Nothing in here yet"
+            />
           )}
         </>
-      )}
-
-      {detail && (
-        <div className="photo-lightbox" onClick={() => setDetail(null)}>
-          <div className="browse-detail" onClick={e => e.stopPropagation()}>
-            <button className="btn btn-light btn-sm browse-detail-close" onClick={() => setDetail(null)}>
-              <i className="fas fa-times"></i>
-            </button>
-            <h5 className="mb-1">{detail.name}</h5>
-            <div className="text-muted small mb-3">
-              {pathOf(detail).join(' / ') || 'Top level'}
-            </div>
-            {detail.description && <p className="mb-3">{detail.description}</p>}
-            <div className="d-flex flex-wrap gap-2">
-              {(detail.photos || []).map((photo, idx) => (
-                <DriveImage
-                  key={idx}
-                  src={photo}
-                  alt={`${detail.name} ${idx + 1}`}
-                  className="rounded"
-                  style={{ width: 120, height: 120, objectFit: 'cover' }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
       )}
 
       <button className="btn btn-outline-secondary btn-sm mt-3" onClick={onExit}>

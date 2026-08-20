@@ -371,6 +371,7 @@ function App() {
             allItems={items}
             onPlace={placeItem}
             onUnplace={unplaceItem}
+            onNavigate={(id) => setArranging({ id })}
             onClose={() => setArranging(null)}
           />
         ) : (

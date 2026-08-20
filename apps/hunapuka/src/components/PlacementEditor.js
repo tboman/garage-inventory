@@ -1,18 +1,25 @@
 import React, { useMemo, useRef, useState } from 'react';
 import ContainerCanvas from './ContainerCanvas';
 import DriveImage from './DriveImage';
+import { resolvePlacements } from '../autoLayout';
 
 const DRAG_THRESHOLD_PX = 3;
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 
 /**
- * Manage-mode surface for arranging one container's children onto its photo.
- * Drag from the tray onto the canvas to place; drag a pin off the canvas to
- * send it back to the tray.
+ * Manage-mode surface for arranging one container's children on its photo.
+ * Everything inside starts on the canvas at a derived position, so this opens
+ * ready to rearrange. Dragging commits a real coordinate; dragging off the
+ * canvas resets an item to its automatic slot. Tapping a container without
+ * dragging descends into it, so the whole tree is walkable from here.
  */
-const PlacementEditor = ({ container, allItems, onPlace, onUnplace, onClose }) => {
+const PlacementEditor = ({ container, allItems, onPlace, onUnplace, onNavigate, onClose }) => {
   const canvasRef = useRef(null);
+  // The gesture lives in a ref as well as state: pointerdown and pointerup can
+  // land in the same tick (a fast tap, or a synthetic click), and a handler
+  // reading only state would still see the pre-drag closure and drop the tap.
+  const dragRef = useRef(null);
   const [drag, setDrag] = useState(null);
 
   const containerId = container ? container.id : null;
@@ -26,50 +33,75 @@ const PlacementEditor = ({ container, allItems, onPlace, onUnplace, onClose }) =
     return counts;
   }, [allItems]);
 
-  const children = useMemo(
-    () => allItems
+  const trail = useMemo(() => {
+    const out = [];
+    let id = containerId;
+    while (id != null) {
+      // eslint-disable-next-line no-loop-func
+      const item = allItems.find(i => i.id === id);
+      if (!item) break;
+      out.unshift(item);
+      id = item.locationId;
+    }
+    return out;
+  }, [containerId, allItems]);
+
+  const pins = useMemo(() => {
+    const children = allItems
       .filter(i => i.locationId === containerId)
       .sort((a, b) => a.order - b.order)
-      .map(i => ({ ...i, childCount: childCounts.get(i.id) || 0 })),
-    [allItems, containerId, childCounts]
-  );
+      .map(i => ({ ...i, childCount: childCounts.get(i.id) || 0 }));
+    return resolvePlacements(children);
+  }, [allItems, containerId, childCounts]);
 
-  const placed = children.filter(i => i.x != null && i.y != null);
-  const unplaced = children.filter(i => i.x == null || i.y == null);
+  const arrangedCount = pins.filter(p => !p.isAuto).length;
   const backdrop = container && container.photos && container.photos.length > 0
     ? container.photos[0]
     : null;
 
   const beginDrag = (e, item) => {
     e.preventDefault();
-    if (e.currentTarget.setPointerCapture) {
+    try {
+      // Throws NotFoundError if the pointer is already gone by the time this
+      // runs; capture is an optimisation, so never let it kill the gesture.
       e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* no capture; pointer events still reach the document */
     }
-    setDrag({
+    const next = {
       item,
       pointerId: e.pointerId,
       origin: { x: e.clientX, y: e.clientY },
       point: { x: e.clientX, y: e.clientY },
       moved: false,
-    });
+    };
+    dragRef.current = next;
+    setDrag(next);
   };
 
   const continueDrag = (e) => {
-    setDrag(d => {
-      if (!d || d.pointerId !== e.pointerId) return d;
-      const moved = d.moved
-        || Math.abs(e.clientX - d.origin.x) > DRAG_THRESHOLD_PX
-        || Math.abs(e.clientY - d.origin.y) > DRAG_THRESHOLD_PX;
-      return { ...d, point: { x: e.clientX, y: e.clientY }, moved };
-    });
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const moved = d.moved
+      || Math.abs(e.clientX - d.origin.x) > DRAG_THRESHOLD_PX
+      || Math.abs(e.clientY - d.origin.y) > DRAG_THRESHOLD_PX;
+    const next = { ...d, point: { x: e.clientX, y: e.clientY }, moved };
+    dragRef.current = next;
+    setDrag(next);
   };
 
   const endDrag = (e) => {
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    const { item, moved } = drag;
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const { item, moved } = d;
+    dragRef.current = null;
     setDrag(null);
-    // A tap that never moved is not a placement gesture; leave the item alone.
-    if (!moved) return;
+
+    // A press that never moved is a tap, not a placement: descend into it.
+    if (!moved) {
+      if (item.childCount > 0) onNavigate(item.id);
+      return;
+    }
 
     const rect = canvasRef.current && canvasRef.current.getBoundingClientRect();
     if (!rect) return;
@@ -79,25 +111,47 @@ const PlacementEditor = ({ container, allItems, onPlace, onUnplace, onClose }) =
 
     if (inside) {
       onPlace(item.id, clamp01((e.clientX - rect.left) / rect.width), clamp01((e.clientY - rect.top) / rect.height));
-    } else if (item.x != null) {
+    } else if (!item.isAuto) {
+      // Dragged off the canvas: hand the item back to automatic positioning.
       onUnplace(item.id);
     }
   };
 
-  const dragHandlers = {
-    onPointerMove: continueDrag,
-    onPointerUp: endDrag,
-    onPointerCancel: () => setDrag(null),
+  const cancelDrag = () => {
+    dragRef.current = null;
+    setDrag(null);
   };
+
+  const titleFor = (item) => (
+    item.childCount > 0 ? `${item.name} - tap to open, drag to move` : item.name
+  );
 
   return (
     <div className="placement-editor">
-      <div className="d-flex align-items-center gap-2 mb-2">
+      <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
         <button className="btn btn-outline-secondary btn-sm" onClick={onClose}>
-          <i className="fas fa-arrow-left me-1"></i>Back to list
+          <i className="fas fa-list me-1"></i>Back to list
         </button>
-        <strong className="ms-1">{container ? container.name : 'Top level'}</strong>
-        <span className="text-muted small ms-auto">{placed.length} of {children.length} placed</span>
+        <nav className="crumbs">
+          <button className="btn btn-link btn-sm p-0" onClick={() => onNavigate(null)} title="Top level">
+            <i className="fas fa-home"></i>
+          </button>
+          {trail.map((item, idx) => (
+            <span key={item.id}>
+              <span className="crumb-sep">/</span>
+              {idx === trail.length - 1 ? (
+                <span className="crumb-current">{item.name}</span>
+              ) : (
+                <button className="btn btn-link btn-sm p-0" onClick={() => onNavigate(item.id)}>
+                  {item.name}
+                </button>
+              )}
+            </span>
+          ))}
+        </nav>
+        <span className="text-muted small ms-auto">
+          {arrangedCount} of {pins.length} arranged
+        </span>
       </div>
 
       {!backdrop && container && (
@@ -109,46 +163,22 @@ const PlacementEditor = ({ container, allItems, onPlace, onUnplace, onClose }) =
 
       <ContainerCanvas
         backdrop={backdrop}
-        pins={placed}
+        pins={pins}
         canvasRef={canvasRef}
         draggingId={drag ? drag.item.id : null}
         onPinPointerDown={beginDrag}
         onPinPointerMove={continueDrag}
         onPinPointerUp={endDrag}
-        hint="Drag items up here from below"
+        onPinPointerCancel={cancelDrag}
+        titleFor={titleFor}
+        hint="Nothing in here yet"
       />
 
-      <div className="placement-tray mt-3">
-        <div className="placement-tray-title">
-          {unplaced.length === 0
-            ? 'Everything here is placed. Drag a pin off the canvas to bring it back.'
-            : `Not placed yet (${unplaced.length}) — drag onto the canvas above`}
-        </div>
-        {unplaced.length > 0 && (
-          <div className="placement-tray-items">
-            {unplaced.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                className={`tray-tile${drag && drag.item.id === item.id ? ' tray-tile-dragging' : ''}`}
-                title={item.name}
-                onPointerDown={(e) => beginDrag(e, item)}
-                {...dragHandlers}
-              >
-                <span className="tray-tile-thumb">
-                  {item.photos && item.photos.length > 0 ? (
-                    <DriveImage src={item.photos[0]} alt={item.name} />
-                  ) : (
-                    <i className="fas fa-box"></i>
-                  )}
-                  {item.childCount > 0 && <span className="canvas-pin-count">{item.childCount}</span>}
-                </span>
-                <span className="tray-tile-label">{item.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <p className="text-muted small mt-2 mb-0">
+        Everything inside starts on the canvas; drag to arrange it. Dashed items
+        are sitting in automatic slots. Drag one off the canvas to send it back
+        to automatic, or tap anything with a count badge to open it.
+      </p>
 
       {drag && drag.moved && (
         <div
