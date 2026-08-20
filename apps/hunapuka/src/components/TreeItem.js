@@ -9,13 +9,29 @@ const ItemTypes = { ITEM: 'item' };
 // ones tuck them behind the subtle toggle to keep an established tree quiet.
 const RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
+// Containers shallower than this open on load, so the shape of the inventory is
+// visible without unfolding everything: depth 0, 1 and 2 expand, revealing
+// items down to depth 3.
+const INITIAL_EXPAND_DEPTH = 3;
+
 const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem, addItem, onArrange, onPhotoAdded, onPhotoRemoved, onError, focusItemId, focusAncestorIds, onClearFocus }) => {
+  const children = allItems
+    .filter(child => child.locationId === item.id)
+    .sort((a, b) => a.order - b.order);
+  const photoCount = (item.photos || []).length;
+  // Children or photos both make an item unfoldable, so both earn a caret.
+  const hasContent = children.length > 0 || photoCount > 0;
+
   const isFocused = focusItemId === item.id;
   const isOnFocusPath = focusAncestorIds && focusAncestorIds.has(item.id);
   // Items predating the createdAt field have no timestamp — treat them as old.
   const isRecent = item.createdAt != null && Date.now() - item.createdAt < RECENT_WINDOW_MS;
 
-  const [isOpen, setIsOpen] = useState(true);
+  // Leaves stay shut at any depth: unfolding one only reveals its photo
+  // gallery, which would bury the tree on load.
+  const [isOpen, setIsOpen] = useState(
+    () => children.length > 0 && depth < INITIAL_EXPAND_DEPTH
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [actionsRevealed, setActionsRevealed] = useState(false);
@@ -58,10 +74,6 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
       addInputRef.current.focus();
     }
   }, [isAdding]);
-
-  const children = allItems
-    .filter(child => child.locationId === item.id)
-    .sort((a, b) => a.order - b.order);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.ITEM,
@@ -153,12 +165,21 @@ const TreeItem = ({ item, allItems, depth = 0, moveItem, updateItem, deleteItem,
             <div className="tree-item-info" onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer' }}>
               <div className="d-flex align-items-center">
                 <span className="tree-toggle me-1">
-                  {children.length > 0 ? (isOpen ? '▼' : '▶') : <span style={{ width: '1em', display: 'inline-block' }}></span>}
+                  {hasContent ? (isOpen ? '▼' : '▶') : <span style={{ width: '1em', display: 'inline-block' }}></span>}
                 </span>
                 <strong>{item.name}</strong>
                 <span className="text-muted ms-2" style={{ fontSize: '0.75rem' }}>#{item.id}</span>
                 {children.length > 0 && (
                   <span className="badge bg-secondary rounded-pill ms-2">{children.length}</span>
+                )}
+                {photoCount > 0 && (
+                  <span
+                    className="text-muted ms-2"
+                    style={{ fontSize: '0.75rem' }}
+                    title={`${photoCount} photo${photoCount > 1 ? 's' : ''}`}
+                  >
+                    <i className="fas fa-camera"></i> {photoCount}
+                  </span>
                 )}
               </div>
               {item.description && <p className="tree-item-desc mb-0">{item.description}</p>}
