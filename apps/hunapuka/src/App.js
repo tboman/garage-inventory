@@ -431,6 +431,7 @@ function App() {
             at={browseAt}
             onNavigate={navigateBrowse}
             onExit={enterManage}
+            canShowPhotos={!activeOwner && driveConnected}
           />
         ) : arranging ? (
           <PlacementEditor
