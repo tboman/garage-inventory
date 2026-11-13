@@ -65,6 +65,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Personal Agent Protocol sign-in state for hunapuka.com: one-time codes,
+    // refresh grants, and access tokens, stored by hash. Server-side only.
+    match /poppy_codes/{hash} {
+      allow read, write: if false;
+    }
+
+    match /poppy_grants/{hash} {
+      allow read, write: if false;
+    }
+
+    match /poppy_access_tokens/{hash} {
+      allow read, write: if false;
+    }
+
     match /listings/{listingId} {
       allow read: if true;
       allow create: if request.auth != null

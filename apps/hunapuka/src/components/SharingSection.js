@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ensureShareIndex, addShare, removeShare, fetchSharedWithMe } from '../api';
+import ConnectedAgents from './ConnectedAgents';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Rules read this whole list on every access check, so keep it small.
@@ -189,6 +190,8 @@ const SharingSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
           own Google Drive and stay private to you.
         </p>
       </div>
+
+      <ConnectedAgents onError={onError} />
     </div>
   );
 };

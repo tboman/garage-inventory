@@ -4,8 +4,29 @@
       "target": "hunapuka",
       "public": "apps/hunapuka/build",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "rewrites": [
+        { "source": "/.well-known/poppy.json", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-protected-resource", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-authorization-server", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/request", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/decision", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/token", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/revoke", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/connections", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/oauth/connections/revoke", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/api/**", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "**", "destination": "/index.html" }
+      ],
       "headers": [
+        {
+          "source": "/oauth/authorize",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "Referrer-Policy", "value": "no-referrer" }
+          ]
+        },
         {
           "source": "/index.html",
           "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
