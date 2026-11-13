@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchConnectedAgents, disconnectAgent } from '../poppyApi';
 
-// AI agents the owner has let read their inventory through the Personal Agent
+// AI agents the owner has connected to their inventory through the Personal Agent
 // Protocol sign-in. Disconnecting revokes the agent's tokens straight away.
 const ConnectedAgents = ({ onError }) => {
   const [agents, setAgents] = useState(null);
@@ -32,8 +32,8 @@ const ConnectedAgents = ({ onError }) => {
     <div className="sharing-card mt-3">
       <h3 className="h6 mb-1">Connected AI agents</h3>
       <p className="text-muted small mb-3">
-        Personal AI agents you have allowed to read your inventory. They see item
-        names, descriptions and structure, never photos, and cannot change anything.
+        Personal AI agents you have connected to your inventory. They work with item
+        names, descriptions and structure, never photos, and can never delete anything.
       </p>
 
       {failed ? (
@@ -49,6 +49,11 @@ const ConnectedAgents = ({ onError }) => {
               <i className="fas fa-robot text-muted"></i>
               <span className="flex-grow-1 text-break">
                 {agent.name}
+                <span className={`badge ms-2 ${agent.can_write ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+                  {agent.can_write && agent.can_read
+                    ? 'Can read and change'
+                    : agent.can_write ? 'Can add and change' : 'Read only'}
+                </span>
                 <span className="text-muted small d-block">
                   {agent.domain} · connected {new Date(agent.connected_at).toLocaleDateString()}
                 </span>

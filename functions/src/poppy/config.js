@@ -20,7 +20,20 @@ const SCOPES = {
       "cannot add, change, move, or delete anything.",
     hints: { changes: "none", personal_data: true },
   },
+  // Deleting is deliberately not part of this scope. It cannot be undone and
+  // would leave the item's photos behind in Google Drive, and keeping it out
+  // lets the scope be honestly described as reversible.
+  "inventory:write": {
+    description:
+      "Add new items to your inventory, rename them or edit their descriptions, " +
+      "and move them between containers. It cannot delete items or touch photos, " +
+      "and it does not by itself let the agent look through your inventory.",
+    hints: { changes: "reversible", personal_data: true },
+  },
 };
+
+const NAME_MAX = 200;
+const DESCRIPTION_MAX = 2000;
 
 const CODE_TTL_MS = 60 * 1000;
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -47,6 +60,8 @@ module.exports = {
   ISSUER,
   PROTOCOL_VERSION,
   SCOPES,
+  NAME_MAX,
+  DESCRIPTION_MAX,
   CODE_TTL_MS,
   ACCESS_TOKEN_TTL_MS,
   REFRESH_TOKEN_TTL_MS,

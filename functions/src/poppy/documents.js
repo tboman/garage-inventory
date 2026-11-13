@@ -1,4 +1,13 @@
-const { ORIGIN, DOMAIN, ISSUER, PROTOCOL_VERSION, SCOPES, PATHS } = require("./config");
+const {
+  ORIGIN,
+  DOMAIN,
+  ISSUER,
+  PROTOCOL_VERSION,
+  SCOPES,
+  PATHS,
+  NAME_MAX,
+  DESCRIPTION_MAX,
+} = require("./config");
 
 const scopeNames = Object.keys(SCOPES);
 
@@ -22,8 +31,9 @@ function poppyJson() {
         type: "openapi",
         url: `${ORIGIN}${PATHS.openapi}`,
         description:
-          "Read a person's home inventory: list or search their items and see " +
-          "which container each one is stored in. Needs sign-in. No photos.",
+          "A person's home inventory: list or search their items and see which " +
+          "container each one is stored in, and add, rename, or move items. " +
+          "Needs sign-in. No photos and no deleting.",
       },
     ],
     // The website is a signed-in single-page app with nothing for a signed-out
@@ -87,11 +97,26 @@ const itemSchema = {
   },
 };
 
+const itemResponse = (description) => ({
+  description,
+  content: { "application/json": { schema: { $ref: "#/components/schemas/Item" } } },
+});
+
+const writeFields = {
+  name: { type: "string", minLength: 1, maxLength: NAME_MAX },
+  description: { type: "string", maxLength: DESCRIPTION_MAX },
+  location_id: {
+    type: ["string", "null"],
+    description: "The id of the container to put the item in, or null for the top level.",
+  },
+};
+
 function openApi() {
-  const security = [{ hunapuka: ["inventory:read"] }];
+  const read = [{ hunapuka: ["inventory:read"] }];
+  const write = [{ hunapuka: ["inventory:write"] }];
   const errors = {
     401: { description: "No access token, or it is expired or revoked. See WWW-Authenticate." },
-    403: { description: "The access token lacks the inventory:read scope." },
+    403: { description: "The access token lacks the scope this operation needs." },
     400: { description: "The Poppy-Session or Poppy-Version header is missing or invalid." },
   };
   return {
@@ -100,16 +125,18 @@ function openApi() {
       title: "HunaPuka inventory",
       version: "1.0.0",
       description:
-        "Read-only access to the signed-in person's home inventory. An inventory " +
-        "is a tree: any item can contain other items (a garage holds a shelf, " +
-        "the shelf holds a box). Photos are not available through this API.",
+        "The signed-in person's home inventory. An inventory is a tree: any item " +
+        "can contain other items (a garage holds a shelf, the shelf holds a box). " +
+        "Reading needs the inventory:read scope; adding, editing, and moving " +
+        "items needs inventory:write. Items cannot be deleted and photos are " +
+        "not available through this API.",
     },
     servers: [{ url: `${ORIGIN}${PATHS.api}` }],
-    security,
     paths: {
       "/items": {
         get: {
           operationId: "listItems",
+          security: read,
           summary: "List or search the person's inventory items",
           description:
             "Returns every item by default. Use `q` to find where something is " +
@@ -148,10 +175,65 @@ function openApi() {
             ...errors,
           },
         },
+        post: {
+          operationId: "createItem",
+          security: write,
+          summary: "Add an item to the person's inventory",
+          description:
+            "Creates an item at the top level or inside a container. Send an " +
+            "Idempotency-Key header so a retried request does not add it twice.",
+          parameters: [
+            {
+              name: "Idempotency-Key",
+              in: "header",
+              schema: { type: "string", maxLength: 200 },
+              description: "A unique value for this creation. Repeating it returns the same item.",
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { type: "object", required: ["name"], properties: writeFields },
+              },
+            },
+          },
+          responses: {
+            201: itemResponse("The new item."),
+            200: itemResponse("The item an earlier request with this Idempotency-Key created."),
+            422: { description: "A field is invalid, or location_id names no item." },
+            ...errors,
+          },
+        },
       },
       "/items/{id}": {
+        patch: {
+          operationId: "updateItem",
+          security: write,
+          summary: "Rename an item, edit its description, or move it",
+          description:
+            "Changes only the fields sent. Set location_id to move the item " +
+            "into another container, or to null for the top level. An item " +
+            "cannot be moved into itself or into something it contains.",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { type: "object", minProperties: 1, properties: writeFields },
+              },
+            },
+          },
+          responses: {
+            200: itemResponse("The item after the change."),
+            404: { description: "No item with that id in this inventory." },
+            422: { description: "A field is invalid, or the move is not possible." },
+            ...errors,
+          },
+        },
         get: {
           operationId: "getItem",
+          security: read,
           summary: "Get one inventory item",
           parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
           responses: {

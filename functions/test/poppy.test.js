@@ -62,8 +62,21 @@ function memoryStore(itemsByUid) {
       }
     },
     async listItems(uid) {
-      return itemsByUid[uid] || [];
+      return (itemsByUid[uid] || []).map((i) => ({ ...i }));
     },
+    async createItem(uid, id, data) {
+      const list = (itemsByUid[uid] = itemsByUid[uid] || []);
+      if (list.some((i) => i.id === id)) return false;
+      list.push({ id, ...data });
+      return true;
+    },
+    async updateItem(uid, id, patch) {
+      Object.assign(
+        itemsByUid[uid].find((i) => i.id === id),
+        patch,
+      );
+    },
+    raw: itemsByUid,
   };
 }
 
@@ -168,8 +181,9 @@ async function setup() {
       return docs[url];
     },
   });
+  const store = memoryStore(structuredClone(ITEMS));
   const handler = createPoppyHandler({
-    store: memoryStore(ITEMS),
+    store,
     clients,
     jwt: createJwtVerifier({ clients }),
     verifyIdToken: async (t) => {
@@ -218,16 +232,22 @@ async function setup() {
     ...fields,
   });
 
-  async function approve(agent, idToken = "alice-id-token") {
+  // `ask` is what the agent requests; `allow` is what the user ticks, when
+  // that differs.
+  async function approve(agent, { idToken = "alice-id-token", ask, allow } = {}) {
     const decision = await call("POST", "/oauth/decision", {
       headers: { authorization: `Bearer ${idToken}` },
-      body: { request: authRequest(agent), approve: true },
+      body: {
+        request: authRequest(agent, ask ? { scope: ask } : {}),
+        approve: true,
+        ...(allow ? { scopes: allow } : {}),
+      },
     });
     return new URL(decision.body.redirect).searchParams.get("code");
   }
 
-  async function signIn(agent, idToken) {
-    const code = await approve(agent, idToken);
+  async function signIn(agent, options) {
+    const code = await approve(agent, options);
     const token = await call("POST", "/oauth/token", {
       body: await tokenForm(agent, {
         grant_type: "authorization_code",
@@ -239,16 +259,21 @@ async function setup() {
     return { code, token };
   }
 
-  async function api(agent, path, { accessToken, session = {}, version = "0.4", query } = {}) {
+  async function api(
+    agent,
+    path,
+    { accessToken, session = {}, version = "0.4", query, method = "GET", body, headers: extra = {} } = {},
+  ) {
     const headers = {
-      "Poppy-Session": await agent.sessionHeader({ path, accessToken, ...session }),
+      "Poppy-Session": await agent.sessionHeader({ method, path, accessToken, ...session }),
+      ...extra,
     };
     if (version) headers["Poppy-Version"] = version;
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-    return call("GET", path, { headers, query });
+    return call(method, path, { headers, query, body });
   }
 
-  return { muse, other, pss, call, authRequest, approve, signIn, api, tokenForm, verifier };
+  return { muse, other, pss, store, call, authRequest, approve, signIn, api, tokenForm, verifier };
 }
 
 test("discovery documents agree with each other", async () => {
@@ -294,7 +319,7 @@ test("the consent page learns who is asking, and bad requests go nowhere unsafe"
   assert.ok(unknown.body.error);
 
   for (const [extra, error] of [
-    [{ scope: "inventory:write" }, "invalid_scope"],
+    [{ scope: "inventory:read inventory:delete" }, "invalid_scope"],
     [{ scope: undefined }, "invalid_scope"],
     [{ code_challenge_method: "plain" }, "invalid_request"],
     [{ response_type: "token" }, "unsupported_response_type"],
@@ -543,6 +568,108 @@ test("the owner can see and disconnect agents, and only their own", async () => 
   assert.equal(ok.status, 200);
   assert.equal((await api(muse, "/api/v1/items", { accessToken })).status, 401);
   assert.equal((await call("GET", "/oauth/connections", as("alice-id-token"))).body.connections.length, 0);
+});
+
+test("read and write are separate grants, and the user can approve just one", async () => {
+  const { muse, call, authRequest, signIn, api } = await setup();
+  const both = "inventory:read inventory:write";
+  const path = "/api/v1/items";
+  const post = (accessToken, body, headers) => api(muse, path, { accessToken, method: "POST", body, headers });
+
+  const info = await call("POST", "/oauth/request", { body: authRequest(muse, { scope: both }) });
+  assert.deepEqual(
+    info.body.scopes.map((s) => [s.name, s.hints.changes]),
+    [
+      ["inventory:read", "none"],
+      ["inventory:write", "reversible"],
+    ],
+  );
+
+  // Asked for both, the user ticks only read: the token cannot write.
+  const readOnly = (await signIn(muse, { ask: both, allow: ["inventory:read"] })).token.body;
+  assert.equal(readOnly.scope, "inventory:read");
+  assert.equal((await api(muse, path, { accessToken: readOnly.access_token })).status, 200);
+  const refused = await post(readOnly.access_token, { name: "Ladder" });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.headers["WWW-Authenticate"], 'Bearer error="insufficient_scope", scope="inventory:write"');
+
+  // Write alone cannot list the inventory.
+  const writeOnly = (await signIn(muse, { ask: both, allow: ["inventory:write"] })).token.body;
+  assert.equal(writeOnly.scope, "inventory:write");
+  assert.equal((await api(muse, path, { accessToken: writeOnly.access_token })).status, 403);
+  assert.equal((await post(writeOnly.access_token, { name: "Ladder" })).status, 201);
+
+  // Ticking a scope the agent never asked for adds nothing, and ticking none declines.
+  const sneaky = (await signIn(muse, { allow: ["inventory:read", "inventory:write"] })).token.body;
+  assert.equal(sneaky.scope, "inventory:read");
+  const none = await call("POST", "/oauth/decision", {
+    headers: { authorization: "Bearer alice-id-token" },
+    body: { request: authRequest(muse, { scope: both }), approve: true, scopes: [] },
+  });
+  assert.equal(new URL(none.body.redirect).searchParams.get("error"), "access_denied");
+
+  // A signed-out write is told which scope to sign in for.
+  const signedOut = await api(muse, path, { method: "POST", body: { name: "x" } });
+  assert.equal(signedOut.headers["WWW-Authenticate"], 'Bearer scope="inventory:write"');
+});
+
+test("an agent with write access can add, edit, and move items, but not break the tree", async () => {
+  const { muse, store, signIn, api } = await setup();
+  const { token } = await signIn(muse, { ask: "inventory:read inventory:write" });
+  const accessToken = token.body.access_token;
+  const post = (body, headers) => api(muse, "/api/v1/items", { accessToken, method: "POST", body, headers });
+  const patch = (id, body) => api(muse, `/api/v1/items/${id}`, { accessToken, method: "PATCH", body });
+
+  const made = await post({ name: "  Ladder ", description: "6 ft", location_id: "g" });
+  assert.equal(made.status, 201);
+  assert.equal(made.body.name, "Ladder");
+  assert.deepEqual(made.body.path, ["Garage"]);
+  const stored = store.raw.alice.find((i) => i.id === made.body.id);
+  // The shape the web app expects of an item, placed ahead of its siblings.
+  assert.deepEqual(stored.photos, []);
+  assert.equal(stored.order, 0);
+  assert.equal(typeof stored.createdAt, "number");
+
+  // The same Idempotency-Key returns the first item instead of adding another.
+  const key = { "Idempotency-Key": "retry-1" };
+  const first = await post({ name: "Rake" }, key);
+  const again = await post({ name: "Rake" }, key);
+  assert.equal(first.status, 201);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.id, first.body.id);
+  assert.equal(store.raw.alice.filter((i) => i.name === "Rake").length, 1);
+
+  for (const body of [{}, { name: "" }, { name: 5 }, { name: "x".repeat(201) }, { name: "a", location_id: "nope" }, { name: "a", description: 3 }]) {
+    assert.equal((await post(body)).status, 422, JSON.stringify(body));
+  }
+  // Nobody else's container can be used as a location.
+  assert.equal((await post({ name: "a", location_id: "b" })).status, 422);
+
+  const renamed = await patch("d", { name: "Drill", description: "18V" });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.name, "Drill");
+  assert.deepEqual(renamed.body.path, ["Garage", "Shelf"]);
+  // Editing leaves photos and everything else on the item alone.
+  assert.deepEqual(store.raw.alice.find((i) => i.id === "d").photos, ["https://drive/secret2"]);
+  assert.ok(!JSON.stringify(renamed.body).includes("secret"));
+
+  const moved = await patch("d", { location_id: null });
+  assert.deepEqual(moved.body.path, []);
+  const drill = store.raw.alice.find((i) => i.id === "d");
+  assert.equal(drill.locationId, null);
+  assert.equal(drill.x, null);
+
+  assert.equal((await patch("g", { location_id: "g" })).status, 422);
+  assert.equal((await patch("g", { location_id: "s" })).status, 422);
+  assert.equal(store.raw.alice.find((i) => i.id === "g").locationId, null);
+  assert.equal((await patch("d", {})).status, 422);
+  assert.equal((await patch("b", { name: "Mine now" })).status, 404);
+  assert.equal(store.raw.bob[0].name, "Bobs bike");
+
+  // There is no way to delete.
+  const del = await api(muse, "/api/v1/items/d", { accessToken, method: "DELETE" });
+  assert.equal(del.status, 404);
+  assert.ok(store.raw.alice.some((i) => i.id === "d"));
 });
 
 test("shapeItems survives a location cycle and a missing parent", () => {

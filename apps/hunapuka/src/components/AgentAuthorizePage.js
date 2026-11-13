@@ -7,7 +7,7 @@ import { describeAgentRequest, decideAgentRequest } from '../poppyApi';
 
 // The consent page a personal AI agent opens at /oauth/authorize (Personal
 // Agent Protocol, Direct Sign-In). The person signs in with Google here, on
-// our own page, and decides whether the agent may read their inventory. The
+// our own page, and decides what the agent may do with their inventory. The
 // server re-checks the whole request when the decision is posted, so nothing
 // shown here is trusted on the way back.
 const AgentAuthorizePage = () => {
@@ -19,6 +19,8 @@ const AgentAuthorizePage = () => {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Scope names the person has ticked. Everything asked for starts ticked.
+  const [chosen, setChosen] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,7 +29,10 @@ const AgentAuthorizePage = () => {
         if (cancelled) return;
         if (result.redirect) window.location.replace(result.redirect);
         else if (result.error) setError(result.error);
-        else setInfo(result);
+        else {
+          setInfo(result);
+          setChosen(result.scopes.map(s => s.name));
+        }
       })
       .catch(() => {
         if (!cancelled) setError('This connection request could not be checked. Try again from your agent.');
@@ -53,7 +58,7 @@ const AgentAuthorizePage = () => {
   const decide = async (approve) => {
     setBusy(true);
     try {
-      const result = await decideAgentRequest(request, approve);
+      const result = await decideAgentRequest(request, approve, chosen);
       if (result.redirect) {
         window.location.assign(result.redirect);
         return;
@@ -134,12 +139,29 @@ const AgentAuthorizePage = () => {
           </div>
 
           <div className="border rounded p-3 mb-3 bg-white">
-            <div className="text-muted small mb-2">{client.name} will be able to</div>
-            <ul className="mb-0 ps-3">
-              {scopes.map(scope => (
-                <li key={scope.name}>{scope.description}</li>
-              ))}
-            </ul>
+            <div className="text-muted small mb-2">
+              {client.name} is asking to do the following. Untick anything you do not want to allow.
+            </div>
+            {scopes.map(scope => (
+              <div className="form-check mb-2" key={scope.name}>
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`scope-${scope.name}`}
+                  checked={chosen.includes(scope.name)}
+                  disabled={busy}
+                  onChange={e => setChosen(prev => (
+                    e.target.checked ? [...prev, scope.name] : prev.filter(n => n !== scope.name)
+                  ))}
+                />
+                <label className="form-check-label" htmlFor={`scope-${scope.name}`}>
+                  {scope.hints.changes !== 'none' && (
+                    <span className="badge bg-warning text-dark me-1">Makes changes</span>
+                  )}
+                  {scope.description}
+                </label>
+              </div>
+            ))}
           </div>
 
           <p className="text-muted small">
@@ -148,7 +170,11 @@ const AgentAuthorizePage = () => {
           </p>
 
           <div className="d-flex gap-2">
-            <button className="btn btn-primary" onClick={() => decide(true)} disabled={busy}>
+            <button
+              className="btn btn-primary"
+              onClick={() => decide(true)}
+              disabled={busy || chosen.length === 0}
+            >
               Allow
             </button>
             <button className="btn btn-outline-secondary" onClick={() => decide(false)} disabled={busy}>

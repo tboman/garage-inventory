@@ -1,5 +1,5 @@
 // Personal Agent Protocol ("Poppy") support for hunapuka.com: lets a person's
-// AI agent sign in with their approval and read their inventory. Firebase
+// AI agent sign in with their approval and read or update their inventory. Firebase
 // Hosting rewrites the protocol's paths on hunapuka.com to this function; see
 // src/poppy/handler.js for the endpoints.
 

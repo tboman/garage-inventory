@@ -5,7 +5,7 @@
 //   sign-in        /oauth/request and /oauth/decision back the consent page the
 //                  web app serves at /oauth/authorize; /oauth/token, /oauth/revoke
 //   account        /oauth/connections lists and disconnects agents for the owner
-//   inventory API  /api/v1/items, read only, photos never included
+//   inventory API  /api/v1/items: read, add, edit, move. No delete, no photos.
 //
 // Dependencies are injected so the whole flow can run in tests without
 // Firestore, Firebase Auth, or the network.
@@ -16,6 +16,8 @@ const {
   ISSUER,
   PROTOCOL_VERSION,
   SCOPES,
+  NAME_MAX,
+  DESCRIPTION_MAX,
   CODE_TTL_MS,
   ACCESS_TOKEN_TTL_MS,
   REFRESH_TOKEN_TTL_MS,
@@ -27,7 +29,8 @@ const { JwtError, sha256url } = require("./jwt");
 
 const ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 const PKCE_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
-const API_SCOPE = "inventory:read";
+const READ = "inventory:read";
+const WRITE = "inventory:write";
 
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const newToken = (prefix) => `${prefix}_${randomBytes(32).toString("base64url")}`;
@@ -178,7 +181,11 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
     const checked = await checkAuthorizationRequest(body.request);
     if (checked.fatal) return send(res, 200, { error: checked.fatal });
     if (checked.redirect) return send(res, 200, { redirect: checked.redirect });
-    if (body.approve !== true) {
+    // The User may approve only some of what was asked for. Anything not in
+    // the request is ignored, and approving nothing is a decline (spec 4.7).
+    const picked = Array.isArray(body.scopes) ? body.scopes : checked.scopes;
+    const approved = checked.scopes.filter((s) => picked.includes(s));
+    if (body.approve !== true || approved.length === 0) {
       return send(res, 200, {
         redirect: checked.back({ error: "access_denied", error_description: "The user declined." }),
       });
@@ -193,7 +200,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
       client_name: checked.client.client_name || checked.client.host,
       client_host: checked.client.host,
       redirect_uri: checked.redirectUri,
-      scope: checked.scopes.join(" "),
+      scope: approved.join(" "),
       code_challenge: checked.challenge,
       expires_at: now() + CODE_TTL_MS,
       used: false,
@@ -353,7 +360,8 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
           id: g.id,
           name: g.client_name,
           domain: g.client_host,
-          scopes: parseScope(g.scope).map((name) => (SCOPES[name] || {}).description || name),
+          can_read: parseScope(g.scope).includes(READ),
+          can_write: parseScope(g.scope).includes(WRITE),
           connected_at: g.created_at,
           last_used_at: g.last_used_at,
         })),
@@ -369,7 +377,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
   // ---- The inventory API ------------------------------------------------
 
   // Returns the access token record, or null after answering the request.
-  async function authorizeApiRequest(req, res) {
+  async function authorizeApiRequest(req, res, scope) {
     const sessionJwt = req.get("poppy-session");
     const invalidSession = (description) => oauthError(res, 400, "invalid_session", description);
     if (!sessionJwt) {
@@ -398,7 +406,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
       send(res, status, undefined, { "WWW-Authenticate": `Bearer ${params}` });
     if (!accessToken) {
       // Signed out: say which scope a sign-in needs, with no error code.
-      challenge(401, `scope="${API_SCOPE}"`);
+      challenge(401, `scope="${scope}"`);
       return null;
     }
     const record = await store.getAccessToken(hashToken(accessToken));
@@ -411,15 +419,15 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
       invalidSession("The access token was issued to another agent.");
       return null;
     }
-    if (!parseScope(record.scope).includes(API_SCOPE)) {
-      challenge(403, `error="insufficient_scope", scope="${API_SCOPE}"`);
+    if (!parseScope(record.scope).includes(scope)) {
+      challenge(403, `error="insufficient_scope", scope="${scope}"`);
       return null;
     }
     return record;
   }
 
   async function handleItems(req, res, itemId) {
-    const record = await authorizeApiRequest(req, res);
+    const record = await authorizeApiRequest(req, res, READ);
     if (!record) return;
     let items = shapeItems(await store.listItems(record.uid));
     if (itemId !== undefined) {
@@ -435,6 +443,117 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
     const at = typeof req.query.location_id === "string" ? req.query.location_id : "";
     if (at) items = items.filter((i) => i.location_id === (at === "root" ? null : at));
     send(res, 200, { items, total: items.length });
+  }
+
+  // Reads the writable fields out of a request body. Returns { error } for a
+  // bad value, otherwise only the fields that were actually sent.
+  function readItemFields(body) {
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+    const out = {};
+    if (b.name !== undefined) {
+      const name = typeof b.name === "string" ? b.name.trim() : "";
+      if (!name || name.length > NAME_MAX) {
+        return { error: `name must be 1 to ${NAME_MAX} characters.` };
+      }
+      out.name = name;
+    }
+    if (b.description !== undefined) {
+      if (typeof b.description !== "string" || b.description.length > DESCRIPTION_MAX) {
+        return { error: `description must be text of at most ${DESCRIPTION_MAX} characters.` };
+      }
+      out.description = b.description;
+    }
+    if (b.location_id !== undefined) {
+      if (b.location_id !== null && typeof b.location_id !== "string") {
+        return { error: "location_id must be an item id or null." };
+      }
+      out.locationId = b.location_id;
+    }
+    return out;
+  }
+
+  const invalid = (res, description) => oauthError(res, 422, "invalid_request", description);
+  const orders = (items, locationId) =>
+    items.filter((i) => (i.locationId ?? null) === locationId).map((i) => i.order ?? 0);
+  const shapedOne = (items, id) => shapeItems(items).find((i) => i.id === id);
+
+  async function handleCreateItem(req, res) {
+    const record = await authorizeApiRequest(req, res, WRITE);
+    if (!record) return;
+    const fields = readItemFields(req.body);
+    if (fields.error) return invalid(res, fields.error);
+    if (!fields.name) return invalid(res, "name is required.");
+    const items = await store.listItems(record.uid);
+    const locationId = fields.locationId ?? null;
+    if (locationId !== null && !items.some((i) => i.id === locationId)) {
+      return invalid(res, "location_id names no item in this inventory.");
+    }
+
+    // A retried request with the same Idempotency-Key maps to the same
+    // document id, so it finds the first attempt's item instead of adding one.
+    const key = req.get("idempotency-key");
+    if (key !== undefined && (!key || key.length > 200)) {
+      return invalid(res, "Idempotency-Key must be 1 to 200 characters.");
+    }
+    const id = key
+      ? `poppy_${hashToken(`${record.client_id}\n${record.uid}\n${key}`).slice(0, 32)}`
+      : `poppy_${randomBytes(16).toString("hex")}`;
+    const existing = shapedOne(items, id);
+    if (existing) return send(res, 200, existing);
+
+    const siblings = orders(items, locationId);
+    // The same shape the web app writes, new items first among their siblings.
+    const data = {
+      name: fields.name,
+      description: fields.description || "",
+      locationId,
+      order: siblings.length ? Math.min(...siblings) - 1 : 0,
+      photos: [],
+      createdAt: now(),
+    };
+    if (!(await store.createItem(record.uid, id, data))) {
+      // Created by a request racing this one, after our read.
+      return oauthError(res, 409, "conflict", "This request is already in progress.");
+    }
+    send(res, 201, shapedOne([...items, { id, ...data }], id));
+  }
+
+  async function handleUpdateItem(req, res, itemId) {
+    const record = await authorizeApiRequest(req, res, WRITE);
+    if (!record) return;
+    const fields = readItemFields(req.body);
+    if (fields.error) return invalid(res, fields.error);
+    if (Object.keys(fields).length === 0) {
+      return invalid(res, "Send name, description, or location_id.");
+    }
+    const items = await store.listItems(record.uid);
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return oauthError(res, 404, "not_found", "No such item.");
+
+    const patch = {};
+    if (fields.name !== undefined) patch.name = fields.name;
+    if (fields.description !== undefined) patch.description = fields.description;
+    if (fields.locationId !== undefined && fields.locationId !== (item.locationId ?? null)) {
+      const target = fields.locationId;
+      const byId = new Map(items.map((i) => [i.id, i]));
+      if (target !== null) {
+        if (!byId.has(target)) return invalid(res, "location_id names no item in this inventory.");
+        // Walk up from the target: meeting the item means it would contain itself.
+        const seen = new Set();
+        for (let at = target; at && byId.has(at) && !seen.has(at); at = byId.get(at).locationId) {
+          if (at === itemId) return invalid(res, "An item cannot be moved into itself or its contents.");
+          seen.add(at);
+        }
+      }
+      const siblings = orders(items, target);
+      patch.locationId = target;
+      patch.order = siblings.length ? Math.max(...siblings) + 1 : 0;
+      // Canvas coordinates are relative to the old container, so a move voids them.
+      patch.x = null;
+      patch.y = null;
+    }
+    if (Object.keys(patch).length) await store.updateItem(record.uid, itemId, patch);
+    send(res, 200, shapedOne(items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)), itemId));
   }
 
   // ---- Routing ----------------------------------------------------------
@@ -454,6 +573,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
     "GET /oauth/connections": handleConnections,
     "POST /oauth/connections/revoke": handleConnections,
     [`GET ${PATHS.api}/items`]: (req, res) => handleItems(req, res),
+    [`POST ${PATHS.api}/items`]: handleCreateItem,
   };
 
   return async function handle(req, res) {
@@ -462,6 +582,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
       if (route) return await route(req, res);
       const item = new RegExp(`^${PATHS.api}/items/([A-Za-z0-9_-]{1,64})$`).exec(req.path);
       if (item && req.method === "GET") return await handleItems(req, res, item[1]);
+      if (item && req.method === "PATCH") return await handleUpdateItem(req, res, item[1]);
       oauthError(res, 404, "not_found", "No such endpoint.");
     } catch (err) {
       // Message only: requests carry tokens and Session JWTs, which are secrets.

@@ -89,6 +89,21 @@ function createFirestoreStore() {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    // Returns false, leaving the stored item alone, when the id already exists.
+    async createItem(uid, id, data) {
+      try {
+        await db.collection("users").doc(uid).collection("items").doc(id).create(data);
+        return true;
+      } catch (err) {
+        if (err.code === 6 || err.code === "already-exists") return false;
+        throw err;
+      }
+    },
+
+    async updateItem(uid, id, patch) {
+      await db.collection("users").doc(uid).collection("items").doc(id).update(patch);
+    },
+
     async deleteExpired(nowMs) {
       let total = 0;
       for (const name of [CODES, GRANTS, ACCESS]) {

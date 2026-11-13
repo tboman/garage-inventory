@@ -21,9 +21,10 @@ export function describeAgentRequest(request) {
   return post('/oauth/request', request);
 }
 
-// Approving sends the signed-in user's ID token; declining needs no account.
-export function decideAgentRequest(request, approve) {
-  return post('/oauth/decision', { request, approve }, { signedIn: approve });
+// Approving sends the signed-in user's ID token and the scope names they
+// ticked; declining needs no account.
+export function decideAgentRequest(request, approve, scopes = []) {
+  return post('/oauth/decision', { request, approve, scopes }, { signedIn: approve });
 }
 
 export async function fetchConnectedAgents() {
