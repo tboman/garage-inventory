@@ -473,6 +473,28 @@
   justify-content: center;
 }
 
+/* Sideways drags belong to the viewer; vertical ones still scroll the page. */
+.photo-viewer-swipeable {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.photo-viewer-slide {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease-out;
+}
+
+/* Track the finger exactly while dragging; ease back only on release. */
+.photo-viewer-slide-dragging {
+  transition: none;
+}
+
 .photo-viewer-img {
   width: 100%;
   height: 100%;
