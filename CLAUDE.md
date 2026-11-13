@@ -9,7 +9,7 @@ Monorepo with three independent Node projects, no workspace tooling — each has
 - `apps/hunapuka` — private inventory React app (CRA + React 19). Hosted at `hunapuka-34ce6` Firebase Hosting target.
 - `apps/storageloot` — public marketplace React app (CRA + React 19 + React Router). Hosted at `storageloot-shop` Firebase Hosting target.
 - `apps/buymywedding` — standalone Vite + React 19 + TS app with its **own** Firebase project (`buymywedding-21`), its own `firebase.json`, rules, and TypeScript Cloud Functions. Vendored into the monorepo but deploys independently — see "buymywedding (separate Firebase project)" below.
-- `functions/` — Firebase Cloud Functions for `hunapuka-34ce6` (Node 20, plain CommonJS — **no build step**). Entry point is `functions/index.js`, which re-exports handlers from `functions/src/*.js`.
+- `functions/` — Firebase Cloud Functions for `hunapuka-34ce6` (Node 22, plain CommonJS — **no build step**). Entry point is `functions/index.js`, which re-exports handlers from `functions/src/*.js`.
 - `services/mcp` — TypeScript MCP server (Express + `@modelcontextprotocol/sdk`), deployed to Cloud Run via the provided `Dockerfile`.
 
 Firebase project `hunapuka-34ce6` backs hunapuka, storageloot, buymynursery, the shared `functions/`, Firestore, Storage, and Auth. `apps/buymywedding` is the exception — it has its own Firebase project and config.
