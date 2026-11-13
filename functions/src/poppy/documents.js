@@ -32,10 +32,10 @@ function poppyJson() {
         url: `${ORIGIN}${PATHS.openapi}`,
         description:
           "A person's home inventory: list or search their items and see which " +
-          "container each one is stored in, and add, rename, or move items. " +
+          "container each one is stored in, and add, rename, move, or delete items. " +
           "Every operation, reading included, needs the person to sign in and " +
-          "approve; nothing is available to a signed-out agent. No photos and " +
-          "no deleting.",
+          "approve; nothing is available to a signed-out agent. Deleting needs " +
+          "its own approval. No photos.",
       },
     ],
     // The website is a signed-in single-page app with nothing for a signed-out
@@ -116,6 +116,7 @@ const writeFields = {
 function openApi() {
   const read = [{ hunapuka: ["inventory:read"] }];
   const write = [{ hunapuka: ["inventory:write"] }];
+  const remove = [{ hunapuka: ["inventory:delete"] }];
   const errors = {
     401: { description: "No access token, or it is expired or revoked. See WWW-Authenticate." },
     403: { description: "The access token lacks the scope this operation needs." },
@@ -130,7 +131,7 @@ function openApi() {
         "The signed-in person's home inventory. An inventory is a tree: any item " +
         "can contain other items (a garage holds a shelf, the shelf holds a box). " +
         "Reading needs the inventory:read scope; adding, editing, and moving " +
-        "items needs inventory:write. Items cannot be deleted and photos are " +
+        "items needs inventory:write; deleting needs inventory:delete. Photos are " +
         "not available through this API. There is no signed-out access: every " +
         "request needs an access token from a sign-in the person approved.",
     },
@@ -231,6 +232,22 @@ function openApi() {
             200: itemResponse("The item after the change."),
             404: { description: "No item with that id in this inventory." },
             422: { description: "A field is invalid, or the move is not possible." },
+            ...errors,
+          },
+        },
+        delete: {
+          operationId: "deleteItem",
+          security: remove,
+          summary: "Permanently delete one item",
+          description:
+            "Cannot be undone, so confirm with the person first. Only an item " +
+            "with nothing inside can be deleted; empty a container first. " +
+            "Photos of the item stay in the person's Google Drive.",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            204: { description: "The item was deleted." },
+            404: { description: "No item with that id in this inventory." },
+            409: { description: "The item still has items inside it." },
             ...errors,
           },
         },

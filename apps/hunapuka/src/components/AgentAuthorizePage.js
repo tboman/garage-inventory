@@ -109,9 +109,18 @@ const AgentAuthorizePage = () => {
         <h1 className="h4 mb-0">{client.name} wants to connect to your HunaPuka inventory</h1>
       </div>
 
-      <p className="mb-1">
-        This request comes from <strong className="text-break">{client.domain}</strong>.
-      </p>
+      {client.verified === false ? (
+        <div className="alert alert-danger py-2 small">
+          <strong>This agent has not proved who it is.</strong> HunaPuka could not confirm
+          which agent is asking. If you allow it, access goes to whoever
+          controls <strong className="text-break">{client.domain}</strong>. Only continue
+          if you recognise that address.
+        </div>
+      ) : (
+        <p className="mb-1">
+          This request comes from <strong className="text-break">{client.domain}</strong>.
+        </p>
+      )}
       <div className="alert alert-warning py-2 small">
         Only continue if you asked {client.name} to do this just now. If you did not, choose Cancel.
       </div>
@@ -155,8 +164,11 @@ const AgentAuthorizePage = () => {
                   ))}
                 />
                 <label className="form-check-label" htmlFor={`scope-${scope.name}`}>
-                  {scope.hints.changes !== 'none' && (
+                  {scope.hints.changes === 'reversible' && (
                     <span className="badge bg-warning text-dark me-1">Makes changes</span>
+                  )}
+                  {scope.hints.changes === 'irreversible' && (
+                    <span className="badge bg-danger me-1">Cannot be undone</span>
                   )}
                   {scope.description}
                 </label>

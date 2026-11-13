@@ -76,6 +76,9 @@ function memoryStore(itemsByUid) {
         patch,
       );
     },
+    async deleteItem(uid, id) {
+      itemsByUid[uid] = itemsByUid[uid].filter((i) => i.id !== id);
+    },
     raw: itemsByUid,
   };
 }
@@ -170,7 +173,10 @@ const ITEMS = {
   bob: [{ id: "b", name: "Bobs bike", locationId: null }],
 };
 
-async function setup() {
+// Tests run with agent identity enforced unless they say otherwise, so the
+// strict behaviour stays covered while production runs unenforced.
+async function setup({ enforce = true } = {}) {
+  const identityLog = [];
   const muse = await makeAgent("agent.example");
   const other = await makeAgent("other.example");
   const pss = await makeAgent("pss.example", { alg: "PS384" });
@@ -183,6 +189,8 @@ async function setup() {
   });
   const store = memoryStore(structuredClone(ITEMS));
   const handler = createPoppyHandler({
+    enforceAgentIdentity: enforce,
+    logIdentity: (entry) => identityLog.push(entry),
     store,
     clients,
     jwt: createJwtVerifier({ clients }),
@@ -282,7 +290,7 @@ async function setup() {
     return call(method, path, { headers, query, body });
   }
 
-  return { muse, other, pss, store, call, authRequest, approve, signIn, api, tokenForm, verifier };
+  return { muse, other, pss, store, call, authRequest, approve, signIn, api, tokenForm, verifier, identityLog };
 }
 
 test("discovery documents agree with each other", async () => {
@@ -328,7 +336,7 @@ test("the consent page learns who is asking, and bad requests go nowhere unsafe"
   assert.ok(unknown.body.error);
 
   for (const [extra, error] of [
-    [{ scope: "inventory:read inventory:delete" }, "invalid_scope"],
+    [{ scope: "inventory:read inventory:admin" }, "invalid_scope"],
     [{ scope: undefined }, "invalid_scope"],
     [{ code_challenge_method: "plain" }, "invalid_request"],
     [{ response_type: "token" }, "unsupported_response_type"],
@@ -675,9 +683,10 @@ test("an agent with write access can add, edit, and move items, but not break th
   assert.equal((await patch("b", { name: "Mine now" })).status, 404);
   assert.equal(store.raw.bob[0].name, "Bobs bike");
 
-  // There is no way to delete.
+  // Write does not include deleting.
   const del = await api(muse, "/api/v1/items/d", { accessToken, method: "DELETE" });
-  assert.equal(del.status, 404);
+  assert.equal(del.status, 403);
+  assert.equal(del.headers["WWW-Authenticate"], 'Bearer error="insufficient_scope", scope="inventory:delete"');
   assert.ok(store.raw.alice.some((i) => i.id === "d"));
 });
 
@@ -693,14 +702,14 @@ test("nothing is available without a real Google sign-in, reading included", asy
       operations.push([method.toUpperCase(), `/api/v1${path.replace("{id}", "g")}`]);
     }
   }
-  assert.equal(operations.length, 4);
+  assert.equal(operations.length, 5);
 
   // An agent with a perfectly valid Session but no sign-in gets a challenge
   // on each of them, never data.
   for (const [method, path] of operations) {
     const r = await api(muse, path, { method, body: { name: "x" } });
     assert.equal(r.status, 401, `${method} ${path}`);
-    assert.match(r.headers["WWW-Authenticate"], /^Bearer scope="inventory:(read|write)"$/);
+    assert.match(r.headers["WWW-Authenticate"], /^Bearer scope="inventory:(read|write|delete)"$/);
     assert.equal(r.body, undefined);
   }
 
@@ -719,6 +728,161 @@ test("nothing is available without a real Google sign-in, reading included", asy
   // The real thing still works.
   const { token } = await signIn(muse);
   assert.equal((await api(muse, "/api/v1/items", { accessToken: token.body.access_token })).status, 200);
+});
+
+test("delete is its own grant, removes one item at a time, and never a full container", async () => {
+  const { muse, store, call, authRequest, signIn, api } = await setup();
+  const all = "inventory:read inventory:write inventory:delete";
+  const del = (accessToken, id) => api(muse, `/api/v1/items/${id}`, { accessToken, method: "DELETE" });
+
+  const info = await call("POST", "/oauth/request", { body: authRequest(muse, { scope: all }) });
+  assert.equal(info.body.scopes.find((s) => s.name === "inventory:delete").hints.changes, "irreversible");
+
+  // Read plus write, with delete unticked, cannot delete.
+  const noDelete = (await signIn(muse, { ask: all, allow: ["inventory:read", "inventory:write"] })).token.body;
+  assert.equal(noDelete.scope, "inventory:read inventory:write");
+  assert.equal((await del(noDelete.access_token, "d")).status, 403);
+  assert.ok(store.raw.alice.some((i) => i.id === "d"));
+
+  // Delete alone can delete, but cannot read or change.
+  const only = (await signIn(muse, { ask: all, allow: ["inventory:delete"] })).token.body.access_token;
+  assert.equal((await api(muse, "/api/v1/items", { accessToken: only })).status, 403);
+  assert.equal((await api(muse, "/api/v1/items/d", { accessToken: only, method: "PATCH", body: { name: "x" } })).status, 403);
+
+  // A container with things inside is refused, and nothing is touched.
+  const full = await del(only, "g");
+  assert.equal(full.status, 409);
+  assert.equal(full.body.error, "not_empty");
+  assert.equal(store.raw.alice.length, 3);
+
+  assert.equal((await del(only, "b")).status, 404);
+  assert.equal(store.raw.bob.length, 1);
+  assert.equal((await del(only, "missing")).status, 404);
+
+  // Leaf first, then the container it emptied.
+  const gone = await del(only, "d");
+  assert.equal(gone.status, 204);
+  assert.equal(gone.body, undefined);
+  assert.ok(!store.raw.alice.some((i) => i.id === "d"));
+  assert.equal((await del(only, "d")).status, 404);
+  assert.equal((await del(only, "s")).status, 204);
+  assert.equal((await del(only, "g")).status, 204);
+  assert.equal(store.raw.alice.length, 0);
+});
+
+test("identity checks are logged either way when enforced", async () => {
+  const { muse, call, authRequest, signIn, api, identityLog } = await setup();
+  await call("POST", "/oauth/request", {
+    body: authRequest(muse, { client_id: "https://nobody.example/agent.json" }),
+  });
+  assert.deepEqual(identityLog.at(-1), {
+    stage: "authorize",
+    clientId: "https://nobody.example/agent.json",
+    reason: "HTTP 404.",
+  });
+  const { token } = await signIn(muse);
+  assert.ok(identityLog.some((e) => e.stage === "token" && e.clientId === muse.clientId && !e.reason));
+  const before = identityLog.length;
+  await api(muse, "/api/v1/items", { accessToken: token.body.access_token });
+  // A passing API check is not logged on every request, only failures are.
+  assert.equal(identityLog.length, before);
+});
+
+test("unenforced, an agent that cannot identify itself is logged and let through", async () => {
+  const { muse, call, signIn, api, verifier, identityLog } = await setup({ enforce: false });
+  const anon = { clientId: "muse-desktop", redirectUri: "https://muse.example/cb" };
+  const request = {
+    response_type: "code",
+    client_id: anon.clientId,
+    redirect_uri: anon.redirectUri,
+    scope: "inventory:read",
+    state: "s",
+    code_challenge: sha(verifier),
+    code_challenge_method: "S256",
+  };
+
+  // The consent page is shown instead of the dead end, marked unverified and
+  // named by where the approval will be sent.
+  const info = await call("POST", "/oauth/request", { body: request });
+  assert.equal(info.body.error, undefined);
+  assert.equal(info.body.client.verified, false);
+  assert.equal(info.body.client.name, "muse.example");
+  assert.equal(info.body.client.domain, "muse.example");
+  assert.deepEqual(
+    identityLog.filter((e) => e.stage === "authorize").map((e) => [e.clientId, typeof e.reason]),
+    [["muse-desktop", "string"]],
+  );
+
+  // Still refused: no client_id at all, or a return address that is not HTTPS.
+  assert.ok((await call("POST", "/oauth/request", { body: { ...request, client_id: undefined } })).body.error);
+  for (const redirect_uri of ["http://muse.example/cb", "javascript:alert(1)", "myapp://cb", undefined]) {
+    const r = await call("POST", "/oauth/request", { body: { ...request, redirect_uri } });
+    assert.ok(r.body.error, String(redirect_uri));
+    assert.equal(r.body.redirect, undefined);
+  }
+  // A person must still sign in with Google to approve.
+  assert.equal((await call("POST", "/oauth/decision", { body: { request, approve: true } })).status, 401);
+
+  const decision = await call("POST", "/oauth/decision", {
+    headers: { authorization: "Bearer alice-id-token" },
+    body: { request, approve: true },
+  });
+  const code = new URL(decision.body.redirect).searchParams.get("code");
+  const exchange = (fields) =>
+    call("POST", "/oauth/token", {
+      body: { grant_type: "authorization_code", redirect_uri: anon.redirectUri, client_id: anon.clientId, ...fields },
+    });
+
+  // No client assertion is needed now, but PKCE and the client_id binding are.
+  assert.equal((await call("POST", "/oauth/token", { body: { grant_type: "authorization_code", code } })).status, 401);
+  const token = await exchange({ code, code_verifier: verifier });
+  assert.equal(token.status, 200);
+  assert.ok(identityLog.some((e) => e.stage === "token" && e.clientId === "muse-desktop" && e.reason));
+
+  const second = await call("POST", "/oauth/decision", {
+    headers: { authorization: "Bearer alice-id-token" },
+    body: { request, approve: true },
+  });
+  const code2 = new URL(second.body.redirect).searchParams.get("code");
+  assert.equal((await exchange({ code: code2, code_verifier: "y".repeat(43) })).body.error, "invalid_grant");
+
+  // Plain bearer calls work with no Session header or version header...
+  const bearer = { Authorization: `Bearer ${token.body.access_token}` };
+  const list = await call("GET", "/api/v1/items", { headers: bearer });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.total, 3);
+  assert.ok(identityLog.some((e) => e.stage === "api" && e.reason === "The Poppy-Session header is required."));
+  // ...and so does a broken Session header, which is logged with its reason.
+  const broken = await call("GET", "/api/v1/items", { headers: { ...bearer, "Poppy-Session": "garbage" } });
+  assert.equal(broken.status, 200);
+  // But there is still no access without a token, or beyond its scope.
+  assert.equal((await call("GET", "/api/v1/items")).status, 401);
+  assert.equal((await call("POST", "/api/v1/items", { headers: bearer, body: { name: "x" } })).status, 403);
+
+  // The refresh token only works for the client_id it was issued to.
+  const refresh = (client_id) =>
+    call("POST", "/oauth/token", {
+      body: { grant_type: "refresh_token", refresh_token: token.body.refresh_token, client_id },
+    });
+  assert.equal((await refresh("someone-else")).body.error, "invalid_grant");
+  assert.equal((await refresh("muse-desktop")).status, 200);
+
+  // The owner sees that the connection is unverified.
+  const mine = await call("GET", "/oauth/connections", { headers: { authorization: "Bearer alice-id-token" } });
+  assert.equal(mine.body.connections[0].verified, false);
+  assert.equal(mine.body.connections[0].domain, "muse.example");
+
+  // An agent that does identify itself is still checked, and still held to
+  // its registered addresses and to its own tokens.
+  const strict = await call("POST", "/oauth/request", {
+    body: { ...request, client_id: muse.clientId, redirect_uri: "https://evil.example/cb" },
+  });
+  assert.ok(strict.body.error);
+  const proper = await signIn(muse);
+  assert.equal(proper.token.status, 200);
+  const stolen = await api(muse, "/api/v1/items", { accessToken: token.body.access_token });
+  assert.equal(stolen.status, 400);
+  assert.equal(stolen.body.error, "invalid_session");
 });
 
 test("shapeItems survives a location cycle and a missing parent", () => {

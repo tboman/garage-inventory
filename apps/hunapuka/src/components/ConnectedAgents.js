@@ -33,7 +33,7 @@ const ConnectedAgents = ({ onError }) => {
       <h3 className="h6 mb-1">Connected AI agents</h3>
       <p className="text-muted small mb-3">
         Personal AI agents you have connected to your inventory. They work with item
-        names, descriptions and structure, never photos, and can never delete anything.
+        names, descriptions and structure, never photos.
       </p>
 
       {failed ? (
@@ -52,8 +52,14 @@ const ConnectedAgents = ({ onError }) => {
                 <span className={`badge ms-2 ${agent.can_write ? 'bg-warning text-dark' : 'bg-secondary'}`}>
                   {agent.can_write && agent.can_read
                     ? 'Can read and change'
-                    : agent.can_write ? 'Can add and change' : 'Read only'}
+                    : agent.can_write ? 'Can add and change' : agent.can_read ? 'Read only' : 'No reading'}
                 </span>
+                {agent.can_delete && <span className="badge ms-1 bg-danger">Can delete</span>}
+                {agent.verified === false && (
+                  <span className="badge ms-1 bg-dark" title="This agent did not prove who it is">
+                    Unverified
+                  </span>
+                )}
                 <span className="text-muted small d-block">
                   {agent.domain} · connected {new Date(agent.connected_at).toLocaleDateString()}
                 </span>

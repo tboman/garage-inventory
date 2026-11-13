@@ -20,9 +20,8 @@ const SCOPES = {
       "cannot add, change, move, or delete anything.",
     hints: { changes: "none", personal_data: true },
   },
-  // Deleting is deliberately not part of this scope. It cannot be undone and
-  // would leave the item's photos behind in Google Drive, and keeping it out
-  // lets the scope be honestly described as reversible.
+  // Deleting is deliberately not part of this scope: it cannot be undone, and
+  // keeping it out lets this scope be honestly described as reversible.
   "inventory:write": {
     description:
       "Add new items to your inventory, rename them or edit their descriptions, " +
@@ -30,10 +29,31 @@ const SCOPES = {
       "and it does not by itself let the agent look through your inventory.",
     hints: { changes: "reversible", personal_data: true },
   },
+  "inventory:delete": {
+    description:
+      "Permanently delete items from your inventory, one at a time. This cannot " +
+      "be undone. A container has to be emptied before it can be deleted. Any " +
+      "photos of a deleted item stay in your Google Drive. It does not by itself " +
+      "let the agent look through or change your inventory.",
+    hints: { changes: "irreversible", personal_data: true },
+  },
 };
 
 const NAME_MAX = 200;
 const DESCRIPTION_MAX = 2000;
+
+// Whether an agent that fails to prove who it is gets turned away. The checks
+// always run and their outcome is always logged; this decides what a failure
+// does. While false, an agent that publishes no usable client metadata, sends
+// no valid client assertion, or sends no valid Poppy-Session header is still
+// served, as an "unverified" agent. What still protects the account then:
+// the person signs in with Google and approves on the consent page, which
+// warns that the agent is unverified and names where access will be sent;
+// PKCE ties the code to whoever started the sign-in; and every API call needs
+// an access token. What is lost: proof of which agent is asking, and the
+// guarantee that a stolen token is useless without the agent's keys.
+// Set to true once the agents in use identify themselves per spec 4.1 and 5.2.
+const ENFORCE_AGENT_IDENTITY = false;
 
 const CODE_TTL_MS = 60 * 1000;
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -60,6 +80,7 @@ module.exports = {
   ISSUER,
   PROTOCOL_VERSION,
   SCOPES,
+  ENFORCE_AGENT_IDENTITY,
   NAME_MAX,
   DESCRIPTION_MAX,
   CODE_TTL_MS,

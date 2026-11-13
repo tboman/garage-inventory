@@ -39,6 +39,17 @@ async function verifyWith(token, jwk, alg, options) {
   }
 }
 
+// The issuer a JWT claims, without checking anything. Only for log lines and
+// for naming an unverified agent; never a basis for trust.
+function peekIssuer(token) {
+  try {
+    const iss = jose.decodeJwt(token).iss;
+    return typeof iss === "string" ? iss : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function createJwtVerifier({ clients, now = Date.now }) {
   const seenJti = new Map();
 
@@ -186,4 +197,4 @@ function createJwtVerifier({ clients, now = Date.now }) {
   return { verifyClientAssertion, verifySession };
 }
 
-module.exports = { JwtError, createJwtVerifier, sha256url };
+module.exports = { JwtError, createJwtVerifier, sha256url, peekIssuer };

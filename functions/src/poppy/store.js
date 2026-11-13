@@ -104,6 +104,10 @@ function createFirestoreStore() {
       await db.collection("users").doc(uid).collection("items").doc(id).update(patch);
     },
 
+    async deleteItem(uid, id) {
+      await db.collection("users").doc(uid).collection("items").doc(id).delete();
+    },
+
     async deleteExpired(nowMs) {
       let total = 0;
       for (const name of [CODES, GRANTS, ACCESS]) {
