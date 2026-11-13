@@ -5,7 +5,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Rules read this whole list on every access check, so keep it small.
 const MAX_SHARES = 50;
 
-const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
+const SharingSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
   const [emails, setEmails] = useState([]);
   const [sharedWithMe, setSharedWithMe] = useState([]);
   // Tracked apart so a failure on one list does not blank the other.
@@ -80,10 +80,10 @@ const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
   };
 
   return (
-    <div className="account-section">
-      <h2 className="h5 mb-3">Account</h2>
+    <div className="sharing-section">
+      <h2 className="h5 mb-3">Sharing</h2>
 
-      <div className="account-card mb-3">
+      <div className="sharing-card mb-3">
         <div className="text-muted small">Signed in as</div>
         <div className="fw-semibold">{user.email}</div>
         <div className="text-muted small mt-1">
@@ -91,7 +91,7 @@ const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
         </div>
       </div>
 
-      <div className="account-card mb-3">
+      <div className="sharing-card mb-3">
         <h3 className="h6 mb-1">Shared with me</h3>
         <p className="text-muted small mb-3">
           Inventories other people have shared with you. You can look, not change.
@@ -130,7 +130,7 @@ const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
         )}
       </div>
 
-      <div className="account-card">
+      <div className="sharing-card">
         <h3 className="h6 mb-1">Share my inventory</h3>
         <p className="text-muted small mb-3">
           Anyone listed here can view your whole inventory, read only. They cannot
@@ -193,4 +193,4 @@ const AccountSection = ({ user, onError, onViewShared, activeOwnerUid }) => {
   );
 };
 
-export default AccountSection;
+export default SharingSection;

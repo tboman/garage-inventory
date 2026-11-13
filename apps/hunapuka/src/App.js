@@ -13,7 +13,7 @@ import SearchResults from './components/SearchResults';
 import LoginScreen from './components/LoginScreen';
 import BrowseMode from './components/BrowseMode';
 import PlacementEditor from './components/PlacementEditor';
-import AccountSection from './components/AccountSection';
+import SharingSection from './components/SharingSection';
 import { hasValidGoogleToken, subscribeGoogleToken, getGoogleAccessToken } from './googleToken';
 import { useAuth } from './contexts/AuthContext';
 
@@ -23,7 +23,7 @@ function readView() {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
   return {
-    view: view === 'browse' || view === 'account' ? view : 'manage',
+    view: view === 'browse' || view === 'sharing' ? view : 'manage',
     at: params.get('at') || null,
   };
 }
@@ -35,8 +35,8 @@ function writeView(view, at, { replace = false } = {}) {
     params.set('view', 'browse');
     if (at) params.set('at', at);
     else params.delete('at');
-  } else if (view === 'account') {
-    params.set('view', 'account');
+  } else if (view === 'sharing') {
+    params.set('view', 'sharing');
     params.delete('at');
   } else {
     params.delete('view');
@@ -263,10 +263,10 @@ function App() {
     }
   };
 
-  const enterAccount = () => {
-    setViewMode('account');
+  const enterSharing = () => {
+    setViewMode('sharing');
     setArranging(null);
-    writeView('account', null);
+    writeView('sharing', null);
   };
 
   // A shared inventory is someone else's data, so it opens in Browse and every
@@ -350,13 +350,6 @@ function App() {
             <div className="btn-group btn-group-sm" role="group" aria-label="View mode">
               <button
                 type="button"
-                className={`btn ${viewMode === 'manage' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                onClick={enterManage}
-              >
-                <i className="fas fa-pen me-1"></i>Manage
-              </button>
-              <button
-                type="button"
                 className={`btn ${viewMode === 'browse' ? 'btn-secondary' : 'btn-outline-secondary'}`}
                 onClick={enterBrowse}
               >
@@ -364,10 +357,17 @@ function App() {
               </button>
               <button
                 type="button"
-                className={`btn ${viewMode === 'account' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                onClick={enterAccount}
+                className={`btn ${viewMode === 'manage' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={enterManage}
               >
-                <i className="fas fa-user me-1"></i>Account
+                <i className="fas fa-pen me-1"></i>Manage
+              </button>
+              <button
+                type="button"
+                className={`btn ${viewMode === 'sharing' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={enterSharing}
+              >
+                <i className="fas fa-share-nodes me-1"></i>Sharing
               </button>
             </div>
             <span className="text-muted small d-none d-sm-inline">{user.displayName}</span>
@@ -411,8 +411,8 @@ function App() {
           </div>
         )}
 
-        {viewMode === 'account' ? (
-          <AccountSection
+        {viewMode === 'sharing' ? (
+          <SharingSection
             user={user}
             onError={handleError}
             onViewShared={viewSharedInventory}
