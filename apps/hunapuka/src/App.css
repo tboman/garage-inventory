@@ -148,12 +148,34 @@
   align-items: center;
   justify-content: center;
   z-index: 1050;
+  /* Sideways drags step through photos, so only pinch-zoom is left to the browser. */
+  touch-action: pinch-zoom;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .photo-lightbox-content {
   position: relative;
   max-width: 90vw;
   max-height: 90vh;
+  transition: transform 0.15s ease-out;
+}
+
+/* Track the finger exactly while dragging; ease back only on release. */
+.photo-lightbox-dragging {
+  transition: none;
+}
+
+.photo-lightbox-count {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 0.85rem;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  padding: 2px 10px;
 }
 
 .photo-lightbox-content img {

@@ -1,9 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import DriveImage from './DriveImage';
+import useSwipe from '../useSwipe';
 
 const DEFAULT_RATIO = 4 / 3;
-// A sideways drag has to travel this far before it counts as a swipe.
-const SWIPE_MIN_PX = 50;
 
 /**
  * Fills the same frame a container's backdrop occupies, so moving between a
@@ -13,47 +12,20 @@ const SWIPE_MIN_PX = 50;
  */
 const PhotoViewer = ({ entries, index, onStep, onClose, onOpenContainer }) => {
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
-  // How far the photo is being dragged sideways, so it follows the finger.
-  const [dragX, setDragX] = useState(0);
-  const drag = useRef(null);
+  const many = entries.length > 1;
+  const { dragX, handlers } = useSwipe(onStep, many);
 
   const entry = entries[index];
   if (!entry) return null;
 
   const { src, item } = entry;
-  const many = entries.length > 1;
-
-  const onPointerDown = (e) => {
-    if (!many || !e.isPrimary || e.button > 0) return;
-    // The close and arrow buttons keep their own clicks.
-    if (e.target.closest('button')) return;
-    drag.current = { id: e.pointerId, x: e.clientX };
-    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMove = (e) => {
-    if (!drag.current || drag.current.id !== e.pointerId) return;
-    setDragX(e.clientX - drag.current.x);
-  };
-
-  const endDrag = (e, commit) => {
-    if (!drag.current || drag.current.id !== e.pointerId) return;
-    const dx = e.clientX - drag.current.x;
-    drag.current = null;
-    setDragX(0);
-    // Swiping left pulls the next photo in, like turning a page.
-    if (commit && Math.abs(dx) >= SWIPE_MIN_PX) onStep(dx < 0 ? 1 : -1);
-  };
 
   return (
     <div className="photo-viewer-wrap">
       <div
         className={`container-canvas photo-viewer${many ? ' photo-viewer-swipeable' : ''}`}
         style={{ aspectRatio: String(ratio) }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={(e) => endDrag(e, true)}
-        onPointerCancel={(e) => endDrag(e, false)}
+        {...handlers}
       >
         <div
           className={`photo-viewer-slide${dragX ? ' photo-viewer-slide-dragging' : ''}`}
