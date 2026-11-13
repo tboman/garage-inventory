@@ -167,7 +167,12 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
     const token = bearerToken(req);
     if (!token) return null;
     try {
-      return await verifyIdToken(token);
+      const user = await verifyIdToken(token);
+      // Only a real Google sign-in counts. The Firebase project could also
+      // mint tokens for anonymous or other kinds of account, and none of
+      // those may hand an agent access to an inventory.
+      const provider = user.firebase && user.firebase.sign_in_provider;
+      return provider === "google.com" && user.email_verified === true ? user : null;
     } catch {
       return null;
     }
@@ -191,7 +196,7 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
       });
     }
     const user = await signedInUser(req);
-    if (!user) return oauthError(res, 401, "unauthenticated", "Sign in to approve.");
+    if (!user) return oauthError(res, 401, "unauthenticated", "Sign in with Google to approve.");
 
     const code = newToken("hpc");
     await store.putCode(hashToken(code), {
@@ -405,7 +410,9 @@ function createPoppyHandler({ store, clients, jwt, verifyIdToken, now = Date.now
     const challenge = (status, params) =>
       send(res, status, undefined, { "WWW-Authenticate": `Bearer ${params}` });
     if (!accessToken) {
-      // Signed out: say which scope a sign-in needs, with no error code.
+      // This site offers nothing to a signed-out agent: every operation,
+      // reading included, needs the person to have signed in and approved.
+      // Say which scope a sign-in needs, with no error code (spec section 7).
       challenge(401, `scope="${scope}"`);
       return null;
     }

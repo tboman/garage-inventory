@@ -33,7 +33,9 @@ function poppyJson() {
         description:
           "A person's home inventory: list or search their items and see which " +
           "container each one is stored in, and add, rename, or move items. " +
-          "Needs sign-in. No photos and no deleting.",
+          "Every operation, reading included, needs the person to sign in and " +
+          "approve; nothing is available to a signed-out agent. No photos and " +
+          "no deleting.",
       },
     ],
     // The website is a signed-in single-page app with nothing for a signed-out
@@ -129,7 +131,8 @@ function openApi() {
         "can contain other items (a garage holds a shelf, the shelf holds a box). " +
         "Reading needs the inventory:read scope; adding, editing, and moving " +
         "items needs inventory:write. Items cannot be deleted and photos are " +
-        "not available through this API.",
+        "not available through this API. There is no signed-out access: every " +
+        "request needs an access token from a sign-in the person approved.",
     },
     servers: [{ url: `${ORIGIN}${PATHS.api}` }],
     paths: {

@@ -187,8 +187,17 @@ async function setup() {
     clients,
     jwt: createJwtVerifier({ clients }),
     verifyIdToken: async (t) => {
-      if (t === "alice-id-token") return { uid: "alice" };
-      if (t === "bob-id-token") return { uid: "bob" };
+      const google = { email_verified: true, firebase: { sign_in_provider: "google.com" } };
+      if (t === "alice-id-token") return { uid: "alice", ...google };
+      if (t === "bob-id-token") return { uid: "bob", ...google };
+      // Valid Firebase tokens that are not a real Google sign-in.
+      if (t === "anonymous-id-token") return { uid: "alice", firebase: { sign_in_provider: "anonymous" } };
+      if (t === "password-id-token") {
+        return { uid: "alice", email_verified: true, firebase: { sign_in_provider: "password" } };
+      }
+      if (t === "unverified-id-token") {
+        return { uid: "alice", email_verified: false, firebase: { sign_in_provider: "google.com" } };
+      }
       throw new Error("bad token");
     },
   });
@@ -670,6 +679,46 @@ test("an agent with write access can add, edit, and move items, but not break th
   const del = await api(muse, "/api/v1/items/d", { accessToken, method: "DELETE" });
   assert.equal(del.status, 404);
   assert.ok(store.raw.alice.some((i) => i.id === "d"));
+});
+
+test("nothing is available without a real Google sign-in, reading included", async () => {
+  const { muse, call, authRequest, signIn, api } = await setup();
+
+  // Every operation the API describes demands an access token.
+  const openapi = (await call("GET", "/api/openapi.json")).body;
+  const operations = [];
+  for (const [path, methods] of Object.entries(openapi.paths)) {
+    for (const [method, op] of Object.entries(methods)) {
+      assert.ok(op.security && op.security.length && op.security.every((s) => s.hunapuka.length), op.operationId);
+      operations.push([method.toUpperCase(), `/api/v1${path.replace("{id}", "g")}`]);
+    }
+  }
+  assert.equal(operations.length, 4);
+
+  // An agent with a perfectly valid Session but no sign-in gets a challenge
+  // on each of them, never data.
+  for (const [method, path] of operations) {
+    const r = await api(muse, path, { method, body: { name: "x" } });
+    assert.equal(r.status, 401, `${method} ${path}`);
+    assert.match(r.headers["WWW-Authenticate"], /^Bearer scope="inventory:(read|write)"$/);
+    assert.equal(r.body, undefined);
+  }
+
+  // Approval is refused for anything but a verified Google account, so no
+  // anonymous or other Firebase account can hand out access.
+  for (const idToken of ["anonymous-id-token", "password-id-token", "unverified-id-token"]) {
+    const r = await call("POST", "/oauth/decision", {
+      headers: { authorization: `Bearer ${idToken}` },
+      body: { request: authRequest(muse), approve: true },
+    });
+    assert.equal(r.status, 401, idToken);
+    assert.equal(r.body.redirect, undefined);
+    assert.equal((await call("GET", "/oauth/connections", { headers: { authorization: `Bearer ${idToken}` } })).status, 401);
+  }
+
+  // The real thing still works.
+  const { token } = await signIn(muse);
+  assert.equal((await api(muse, "/api/v1/items", { accessToken: token.body.access_token })).status, 200);
 });
 
 test("shapeItems survives a location cycle and a missing parent", () => {
