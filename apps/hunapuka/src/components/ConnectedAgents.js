@@ -61,7 +61,7 @@ const ConnectedAgents = ({ onError }) => {
                   </span>
                 )}
                 <span className="text-muted small d-block">
-                  {agent.domain} · connected {new Date(agent.connected_at).toLocaleDateString()}
+                  {agent.domain ? `${agent.domain} · ` : ''}connected {new Date(agent.connected_at).toLocaleDateString()}
                 </span>
               </span>
               <button

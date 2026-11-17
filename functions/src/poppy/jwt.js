@@ -92,7 +92,12 @@ function createJwtVerifier({ clients, now = Date.now }) {
     if (typeof payload.exp !== "number" || typeof payload.iat !== "number") {
       throw new JwtError("exp and iat are required.");
     }
-    if (payload.exp - nowS > ASSERTION_MAX_LIFETIME_S) throw new JwtError("Assertion lives too long.");
+    if (payload.exp - payload.iat > ASSERTION_MAX_LIFETIME_S) {
+      throw new JwtError("Assertion lasts more than 5 minutes.");
+    }
+    // Without this, a far-future `iat` would let a 5-minute assertion stay
+    // usable for as long as its signer liked.
+    if (payload.iat - nowS > ASSERTION_SKEW_S) throw new JwtError("Assertion iat is in the future.");
     if (typeof payload.jti !== "string" || !payload.jti) throw new JwtError("jti is required.");
     if (!useJti(`a:${clientId}:${payload.jti}`, payload.exp + ASSERTION_SKEW_S)) {
       throw new JwtError("Assertion was already used.");

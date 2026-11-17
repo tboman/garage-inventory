@@ -3,23 +3,33 @@ const {
   DOMAIN,
   ISSUER,
   PROTOCOL_VERSION,
+  OLDER_VERSIONS,
   SCOPES,
   PATHS,
+  DEVICE_GRANT,
   NAME_MAX,
   DESCRIPTION_MAX,
 } = require("./config");
 
 const scopeNames = Object.keys(SCOPES);
 
-function poppyJson() {
+// The discovery document for one protocol version. Every version's document
+// names the same domain and issuer, so moving between versions never changes
+// who the Company is. Only the current version's document, the one served at
+// /.well-known/poppy.json, links to the others (spec 3.4).
+function poppyJson(version = PROTOCOL_VERSION) {
   const scopes = {};
   const hints = {};
   for (const name of scopeNames) {
     scopes[name] = SCOPES[name].description;
     hints[name] = SCOPES[name].hints;
   }
+  const older = Object.entries(OLDER_VERSIONS).map(([v, path]) => [v, `${ORIGIN}${path}`]);
   return {
-    protocol_version: PROTOCOL_VERSION,
+    protocol_version: version,
+    ...(version === PROTOCOL_VERSION && older.length
+      ? { supported_versions: Object.fromEntries(older) }
+      : {}),
     organization: {
       name: "HunaPuka",
       domain: DOMAIN,
@@ -38,9 +48,11 @@ function poppyJson() {
           "its own approval. No photos.",
       },
     ],
-    // The website is a signed-in single-page app with nothing for a signed-out
-    // visitor, so agents are asked to use the API instead of browsing.
-    web: { disabled: true },
+    // An agent's browser joins its Session here and is then shown the
+    // read-only pages under /browse (spec section 6). Those pages apply the
+    // token's scopes, so `web.unscoped` stays unset. The app at / is for
+    // people: it signs in with Google and knows nothing of agent Sessions.
+    web: { browser_session_endpoint: `${ORIGIN}${PATHS.browserSession}` },
   };
 }
 
@@ -59,8 +71,11 @@ function authorizationServerMetadata() {
     authorization_endpoint: `${ORIGIN}${PATHS.authorize}`,
     token_endpoint: `${ORIGIN}${PATHS.token}`,
     revocation_endpoint: `${ORIGIN}${PATHS.revoke}`,
+    device_authorization_endpoint: `${ORIGIN}${PATHS.device}`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    // authorization_code is Direct Sign-In and device_code is Device Sign-In;
+    // agents read which ones are offered from this list (spec 3.2).
+    grant_types_supported: ["authorization_code", "refresh_token", DEVICE_GRANT],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: scopeNames,
     token_endpoint_auth_methods_supported: ["private_key_jwt"],

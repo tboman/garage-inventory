@@ -79,6 +79,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Device Sign-In: requests waiting for approval, and the count of wrong
+    // codes each account has typed.
+    match /poppy_device_codes/{hash} {
+      allow read, write: if false;
+    }
+
+    match /poppy_device_attempts/{uid} {
+      allow read, write: if false;
+    }
+
+    // Web browsing: one-time codes that join an agent's browser to its
+    // Session, and the cookie sessions those joins create.
+    match /poppy_browser_codes/{hash} {
+      allow read, write: if false;
+    }
+
+    match /poppy_web_sessions/{hash} {
+      allow read, write: if false;
+    }
+
     match /listings/{listingId} {
       allow read: if true;
       allow create: if request.auth != null

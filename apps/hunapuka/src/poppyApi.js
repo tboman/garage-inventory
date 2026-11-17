@@ -27,6 +27,18 @@ export function decideAgentRequest(request, approve, scopes = []) {
   return post('/oauth/decision', { request, approve, scopes }, { signedIn: approve });
 }
 
+// Device Sign-In: the person types the code their agent shows them. Both calls
+// need them signed in. Each resolves to { found: false } when the code is not
+// waiting for an answer; describing a found one adds what to show, and
+// deciding it adds { approved }.
+export function describeDeviceRequest(userCode) {
+  return post('/oauth/device/request', { user_code: userCode }, { signedIn: true });
+}
+
+export function decideDeviceRequest(userCode, approve, scopes = []) {
+  return post('/oauth/device/decision', { user_code: userCode, approve, scopes }, { signedIn: true });
+}
+
 export async function fetchConnectedAgents() {
   const resp = await fetch('/oauth/connections', {
     headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },

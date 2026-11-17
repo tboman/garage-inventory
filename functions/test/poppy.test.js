@@ -11,6 +11,7 @@ const { createPoppyHandler, shapeItems } = require("../src/poppy/handler");
 
 const ORIGIN = "https://hunapuka.com";
 const ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 const b64 = (buf) => Buffer.from(buf).toString("base64url");
 const sha = (v) => createHash("sha256").update(v).digest("base64url");
 const rid = () => b64(randomBytes(12));
@@ -19,7 +20,62 @@ function memoryStore(itemsByUid) {
   const codes = new Map();
   const grants = new Map();
   const access = new Map();
+  const device = new Map();
+  const misses = new Map();
+  const browserCodes = new Map();
+  const webSessions = new Map();
   return {
+    async putDeviceRequest(h, d) {
+      device.set(h, { ...d });
+    },
+    async getDeviceRequest(h) {
+      return device.has(h) ? { ...device.get(h) } : null;
+    },
+    async findDeviceRequest(userCodeHash) {
+      const hits = [...device].filter(([, d]) => d.user_code_hash === userCodeHash);
+      return hits.length === 1 ? { id: hits[0][0], ...hits[0][1] } : null;
+    },
+    async updateDeviceRequest(h, patch) {
+      Object.assign(device.get(h), patch);
+    },
+    async moveDeviceRequest(h, from, patch) {
+      const d = device.get(h);
+      if (!d || d.status !== from) return false;
+      Object.assign(d, patch);
+      return true;
+    },
+    async putBrowserCode(h, d) {
+      browserCodes.set(h, { ...d });
+    },
+    async getBrowserCode(h) {
+      return browserCodes.has(h) ? { ...browserCodes.get(h) } : null;
+    },
+    async moveBrowserCode(h, from, patch) {
+      const d = browserCodes.get(h);
+      if (!d || d.status !== from) return false;
+      Object.assign(d, patch);
+      return true;
+    },
+    async useBrowserCode(h) {
+      const d = browserCodes.get(h);
+      if (!d || d.status === "used") return null;
+      const before = { ...d };
+      d.status = "used";
+      return before;
+    },
+    async putWebSession(h, d) {
+      webSessions.set(h, { ...d });
+    },
+    async getWebSession(h) {
+      return webSessions.has(h) ? { ...webSessions.get(h) } : null;
+    },
+    async getDeviceMisses(uid) {
+      return misses.has(uid) ? { ...misses.get(uid) } : null;
+    },
+    async putDeviceMisses(uid, d) {
+      misses.set(uid, { ...d });
+    },
+    device,
     async putCode(h, d) {
       codes.set(h, { ...d });
     },
@@ -106,14 +162,14 @@ async function makeAgent(host, { alg = "ES256" } = {}) {
       },
       [`https://${host}/jwks.json`]: { keys: [rootJwk] },
     },
-    assertion({ aud = ORIGIN } = {}) {
+    assertion({ aud = ORIGIN, iat = nowS(), lifetime = 120 } = {}) {
       return new jose.SignJWT({ jti: rid() })
         .setProtectedHeader({ alg, kid: rootJwk.kid })
         .setIssuer(clientId)
         .setSubject(clientId)
         .setAudience(aud)
-        .setIssuedAt()
-        .setExpirationTime("2m")
+        .setIssuedAt(iat)
+        .setExpirationTime(iat + lifetime)
         .sign(root.privateKey);
     },
     async sessionHeader({ method = "GET", path, accessToken, claims = {}, header = {} }) {
@@ -175,7 +231,9 @@ const ITEMS = {
 
 // Tests run with agent identity enforced unless they say otherwise, so the
 // strict behaviour stays covered while production runs unenforced.
-async function setup({ enforce = true } = {}) {
+// `approved` is the list of approved client_ids, empty unless a test is about
+// it, and `approvedOnly` makes that list the only way in.
+async function setup({ enforce = true, approved = [], approvedOnly = false } = {}) {
   const identityLog = [];
   const muse = await makeAgent("agent.example");
   const other = await makeAgent("other.example");
@@ -188,8 +246,13 @@ async function setup({ enforce = true } = {}) {
     },
   });
   const store = memoryStore(structuredClone(ITEMS));
+  // The handler's clock, which tests can move forward. JWTs keep real time.
+  const clock = { aheadMs: 0, advance: (seconds) => (clock.aheadMs += seconds * 1000) };
   const handler = createPoppyHandler({
+    now: () => Date.now() + clock.aheadMs,
     enforceAgentIdentity: enforce,
+    approvedClients: approved,
+    approvedOnly,
     logIdentity: (entry) => identityLog.push(entry),
     store,
     clients,
@@ -223,6 +286,9 @@ async function setup({ enforce = true } = {}) {
         return res;
       },
       json(b) {
+        out.body = b;
+      },
+      send(b) {
         out.body = b;
       },
       end() {},
@@ -279,7 +345,7 @@ async function setup({ enforce = true } = {}) {
   async function api(
     agent,
     path,
-    { accessToken, session = {}, version = "0.4", query, method = "GET", body, headers: extra = {} } = {},
+    { accessToken, session = {}, version = "1.0", query, method = "GET", body, headers: extra = {} } = {},
   ) {
     const headers = {
       "Poppy-Session": await agent.sessionHeader({ method, path, accessToken, ...session }),
@@ -290,7 +356,41 @@ async function setup({ enforce = true } = {}) {
     return call(method, path, { headers, query, body });
   }
 
-  return { muse, other, pss, store, call, authRequest, approve, signIn, api, tokenForm, verifier, identityLog };
+  // Device Sign-In, from each side: the agent starts and polls; the person
+  // looks the code up and answers on the verification page.
+  const as = (idToken) => (idToken ? { authorization: `Bearer ${idToken}` } : {});
+  const deviceFlow = {
+    start: async (agent, fields = {}) =>
+      call("POST", "/oauth/device", { body: await tokenForm(agent, { scope: "inventory:read", ...fields }) }),
+    poll: async (agent, deviceCode, fields = {}) =>
+      call("POST", "/oauth/token", {
+        body: await tokenForm(agent, { grant_type: DEVICE_GRANT, device_code: deviceCode, ...fields }),
+      }),
+    lookUp: (userCode, idToken = "alice-id-token") =>
+      call("POST", "/oauth/device/request", { headers: as(idToken), body: { user_code: userCode } }),
+    decide: (userCode, { idToken = "alice-id-token", approve: yes = true, scopes } = {}) =>
+      call("POST", "/oauth/device/decision", {
+        headers: as(idToken),
+        body: { user_code: userCode, approve: yes, ...(scopes ? { scopes } : {}) },
+      }),
+  };
+
+  return {
+    muse,
+    other,
+    pss,
+    store,
+    clock,
+    call,
+    authRequest,
+    approve,
+    signIn,
+    api,
+    tokenForm,
+    verifier,
+    identityLog,
+    deviceFlow,
+  };
 }
 
 test("discovery documents agree with each other", async () => {
@@ -298,7 +398,8 @@ test("discovery documents agree with each other", async () => {
   const poppy = (await call("GET", "/.well-known/poppy.json")).body;
   const resource = (await call("GET", "/.well-known/oauth-protected-resource")).body;
   const server = (await call("GET", "/.well-known/oauth-authorization-server")).body;
-  assert.equal(poppy.protocol_version, "0.4");
+  assert.equal(poppy.protocol_version, "1.0");
+  assert.match(poppy.protocol_version, /^[0-9]+\.[0-9]+$/);
   assert.equal(poppy.organization.domain, "hunapuka.com");
   assert.equal(resource.resource, `https://${poppy.organization.domain}`);
   assert.deepEqual(resource.authorization_servers, [server.issuer]);
@@ -307,6 +408,9 @@ test("discovery documents agree with each other", async () => {
   assert.ok(server.grant_types_supported.includes("refresh_token"));
   assert.ok(server.grant_types_supported.includes("authorization_code"));
   assert.ok(server.revocation_endpoint && server.token_endpoint && server.authorization_endpoint);
+  // Device Sign-In is offered by listing its grant, which needs its endpoint.
+  assert.ok(server.grant_types_supported.includes(DEVICE_GRANT));
+  assert.equal(server.device_authorization_endpoint, "https://hunapuka.com/oauth/device");
   for (const scope of server.scopes_supported) {
     assert.ok(poppy.auth.scopes[scope]);
     assert.ok(poppy.auth.scope_hints[scope]);
@@ -314,6 +418,29 @@ test("discovery documents agree with each other", async () => {
   const openapi = (await call("GET", "/api/openapi.json")).body;
   assert.equal(poppy.apis[0].url, "https://hunapuka.com/api/openapi.json");
   assert.ok(openapi.paths["/items"].get);
+  for (const alg of ["ES256", "PS384"]) {
+    assert.ok(server.token_endpoint_auth_signing_alg_values_supported.includes(alg));
+  }
+});
+
+test("0.4 is still served, in its own document that names the same Company", async () => {
+  const { call } = await setup();
+  const poppy = (await call("GET", "/.well-known/poppy.json")).body;
+  assert.deepEqual(Object.keys(poppy.supported_versions), ["0.4"]);
+  const url = new URL(poppy.supported_versions["0.4"]);
+  // Same host as poppy.json, or a Personal Agent must not use it (spec 3.4).
+  assert.equal(url.origin, ORIGIN);
+
+  const older = await call("GET", url.pathname);
+  assert.equal(older.status, 200);
+  assert.equal(older.body.protocol_version, "0.4");
+  assert.equal(older.body.supported_versions, undefined);
+  assert.equal(older.body.organization.domain, poppy.organization.domain);
+  assert.equal(older.body.auth.issuer, poppy.auth.issuer);
+  // Nothing else differs between the two versions' documents.
+  const { protocol_version: v1, supported_versions: links, ...current } = poppy;
+  const { protocol_version: v0, ...previous } = older.body;
+  assert.deepEqual(previous, current);
 });
 
 test("the consent page learns who is asking, and bad requests go nowhere unsafe", async () => {
@@ -322,6 +449,19 @@ test("the consent page learns who is asking, and bad requests go nowhere unsafe"
   assert.equal(ok.body.client.name, "Muse");
   assert.equal(ok.body.client.domain, "agent.example");
   assert.equal(ok.body.scopes[0].name, "inventory:read");
+
+  // prompt=consent, which 1.0 agents send, changes nothing: the page is always
+  // shown, and it lists every scope the request could be granted.
+  const all = "inventory:read inventory:write inventory:delete";
+  const prompted = await call("POST", "/oauth/request", {
+    body: authRequest(muse, { scope: all, prompt: "consent" }),
+  });
+  assert.equal(prompted.body.error, undefined);
+  assert.equal(prompted.body.redirect, undefined);
+  assert.deepEqual(
+    prompted.body.scopes.map((s) => s.name),
+    all.split(" "),
+  );
 
   // An unregistered redirect_uri must never be redirected to.
   const evil = await call("POST", "/oauth/request", {
@@ -470,6 +610,17 @@ test("the token endpoint only accepts a valid client assertion", async () => {
   });
   assert.equal(mismatch.body.error, "invalid_client");
 
+  // An assertion may last 5 minutes and no longer (spec 4.1). invalid_grant
+  // means the assertion was accepted and only the refresh token was unknown.
+  const lasting = async (options) =>
+    (await post({ ...base, client_assertion: await muse.assertion(options) })).body.error;
+  assert.equal(await lasting({ lifetime: 300 }), "invalid_grant");
+  assert.equal(await lasting({ lifetime: 301 }), "invalid_client");
+  assert.equal(await lasting({ lifetime: 3600 }), "invalid_client");
+  const nowS = Math.floor(Date.now() / 1000);
+  assert.equal(await lasting({ iat: nowS + 3600, lifetime: 300 }), "invalid_client");
+  assert.equal(await lasting({ iat: nowS - 600, lifetime: 300 }), "invalid_client");
+
   // PS384 root keys are accepted for assertions and delegations alike.
   const { token } = await signIn(pss);
   assert.equal(token.status, 200);
@@ -482,7 +633,7 @@ test("the API verifies the Session header before anything else", async () => {
   const path = "/api/v1/items";
 
   const none = await call("GET", path, {
-    headers: { Authorization: `Bearer ${accessToken}`, "Poppy-Version": "0.4" },
+    headers: { Authorization: `Bearer ${accessToken}`, "Poppy-Version": "1.0" },
   });
   assert.equal(none.status, 400);
   assert.equal(none.body.error, "invalid_session");
@@ -510,7 +661,7 @@ test("the API verifies the Session header before anything else", async () => {
   const stray = await call("GET", path, {
     headers: {
       "Poppy-Session": await muse.sessionHeader({ path, accessToken }),
-      "Poppy-Version": "0.4",
+      "Poppy-Version": "1.0",
     },
   });
   assert.equal(stray.body.error, "invalid_session");
@@ -520,8 +671,16 @@ test("the API verifies the Session header before anything else", async () => {
   assert.equal(stolen.status, 400);
   assert.equal(stolen.body.error, "invalid_session");
 
-  assert.equal((await api(muse, path, { accessToken, version: null })).body.error, "version_unsupported");
-  assert.equal((await api(muse, path, { accessToken, version: "0.3" })).body.error, "version_unsupported");
+  // Poppy-Version must be compatible with a version served here: any 1.x,
+  // since minor versions of 1 are compatible with each other, or exactly 0.4.
+  for (const version of [null, "0.0", "0.3", "0.5", "2.0", "1", "1.0.0", "v1.0", "1.0, 0.4"]) {
+    const r = await api(muse, path, { accessToken, version });
+    assert.equal(r.status, 400, String(version));
+    assert.deepEqual(r.body, { error: "version_unsupported" }, String(version));
+  }
+  for (const version of ["1.0", "1.1", "1.12", "0.4"]) {
+    assert.equal((await api(muse, path, { accessToken, version })).status, 200, version);
+  }
 
   const garbage = await api(muse, path, { accessToken: "hpa_unknown" });
   assert.equal(garbage.status, 401);
@@ -768,6 +927,530 @@ test("delete is its own grant, removes one item at a time, and never a full cont
   assert.equal((await del(only, "s")).status, 204);
   assert.equal((await del(only, "g")).status, 204);
   assert.equal(store.raw.alice.length, 0);
+});
+
+test("device sign-in: the agent polls while the person approves with a code", async () => {
+  const { muse, clock, call, deviceFlow, api, tokenForm, identityLog } = await setup();
+  const all = "inventory:read inventory:write inventory:delete";
+
+  const started = await deviceFlow.start(muse, { scope: all });
+  assert.equal(started.status, 200);
+  assert.equal(started.headers["Cache-Control"], "no-store");
+  const { device_code: deviceCode, user_code: userCode } = started.body;
+  assert.match(userCode, /^[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}$/);
+  assert.ok(deviceCode.length > 40 && !deviceCode.includes(userCode));
+  // The link is on the issuer's host, or an agent must not show it (spec 4.3).
+  assert.equal(started.body.verification_uri, "https://hunapuka.com/device");
+  const complete = new URL(started.body.verification_uri_complete);
+  assert.equal(complete.origin + complete.pathname, started.body.verification_uri);
+  assert.equal(complete.searchParams.get("user_code"), userCode);
+  assert.equal(started.body.expires_in, 600);
+  assert.equal(started.body.interval, 5);
+  assert.ok(identityLog.some((e) => e.stage === "device" && e.clientId === muse.clientId && !e.reason));
+
+  const waiting = await deviceFlow.poll(muse, deviceCode);
+  assert.equal(waiting.status, 400);
+  assert.equal(waiting.body.error, "authorization_pending");
+
+  // The page needs a real Google sign-in before it will look a code up.
+  assert.equal((await deviceFlow.lookUp(userCode, null)).status, 401);
+  assert.equal((await deviceFlow.lookUp(userCode, "anonymous-id-token")).status, 401);
+  // Typed in lower case with a space, it is still the same code.
+  const info = await deviceFlow.lookUp(userCode.toLowerCase().replace("-", " "));
+  assert.equal(info.body.found, true);
+  assert.equal(info.body.user_code, userCode);
+  assert.deepEqual(info.body.client, {
+    verified: true,
+    name: "Muse",
+    domain: "agent.example",
+    logo_uri: null,
+  });
+  assert.deepEqual(
+    info.body.scopes.map((s) => [s.name, s.hints.changes]),
+    [
+      ["inventory:read", "none"],
+      ["inventory:write", "reversible"],
+      ["inventory:delete", "irreversible"],
+    ],
+  );
+  assert.equal(info.body.access_days, 90);
+
+  // Opening the link, which is all a lookup is, approves nothing.
+  clock.advance(5);
+  assert.equal((await deviceFlow.poll(muse, deviceCode)).body.error, "authorization_pending");
+
+  // The person leaves delete unticked.
+  const decided = await deviceFlow.decide(userCode, { scopes: ["inventory:read", "inventory:write"] });
+  assert.deepEqual(decided.body, { found: true, approved: true });
+  // An answered code cannot be answered again, by anyone.
+  assert.deepEqual((await deviceFlow.decide(userCode, { idToken: "bob-id-token" })).body, { found: false });
+  assert.deepEqual((await deviceFlow.lookUp(userCode)).body, { found: false });
+
+  clock.advance(5);
+  const token = await deviceFlow.poll(muse, deviceCode);
+  assert.equal(token.status, 200);
+  assert.equal(token.body.token_type, "Bearer");
+  assert.equal(token.body.scope, "inventory:read inventory:write");
+  assert.ok(token.body.access_token && token.body.refresh_token && token.body.expires_in);
+  const accessToken = token.body.access_token;
+
+  // The tokens are the same kind Direct Sign-In gives: Alice's inventory,
+  // within the scopes she ticked, refreshable, and listed under her agents.
+  const list = await api(muse, "/api/v1/items", { accessToken });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.total, 3);
+  assert.equal((await api(muse, "/api/v1/items/d", { accessToken, method: "DELETE" })).status, 403);
+  const refreshed = await call("POST", "/oauth/token", {
+    body: await tokenForm(muse, { grant_type: "refresh_token", refresh_token: token.body.refresh_token }),
+  });
+  assert.equal(refreshed.status, 200);
+  const mine = await call("GET", "/oauth/connections", { headers: { authorization: "Bearer alice-id-token" } });
+  assert.equal(mine.body.connections.length, 1);
+  assert.equal(mine.body.connections[0].name, "Muse");
+  assert.equal(mine.body.connections[0].domain, "agent.example");
+  assert.equal(mine.body.connections[0].verified, true);
+  assert.equal(mine.body.connections[0].can_delete, false);
+
+  // Presenting the device_code again fails and revokes what it bought.
+  clock.advance(5);
+  const replay = await deviceFlow.poll(muse, deviceCode);
+  assert.equal(replay.body.error, "invalid_grant");
+  assert.equal((await api(muse, "/api/v1/items", { accessToken })).status, 401);
+});
+
+test("a device request can be declined, expires, and belongs to the agent that started it", async () => {
+  const { muse, other, clock, call, deviceFlow, tokenForm } = await setup();
+  const begin = async (fields) => (await deviceFlow.start(muse, fields)).body;
+  const pollError = async (agent, deviceCode) => (await deviceFlow.poll(agent, deviceCode)).body.error;
+
+  // Another agent that learned the device_code gets nothing from it.
+  const first = await begin();
+  assert.equal(await pollError(other, first.device_code), "invalid_grant");
+  assert.equal(await pollError(muse, "hpd_unknown"), "invalid_grant");
+  const missing = await call("POST", "/oauth/token", { body: await tokenForm(muse, { grant_type: DEVICE_GRANT }) });
+  assert.equal(missing.body.error, "invalid_request");
+
+  // Polling faster than the interval is told to slow down, then forgiven.
+  assert.equal(await pollError(muse, first.device_code), "authorization_pending");
+  assert.equal(await pollError(muse, first.device_code), "slow_down");
+  clock.advance(2);
+  assert.equal(await pollError(muse, first.device_code), "slow_down");
+  clock.advance(5);
+  assert.equal(await pollError(muse, first.device_code), "authorization_pending");
+
+  // Declined, and approving with nothing ticked, both end in access_denied.
+  assert.deepEqual((await deviceFlow.decide(first.user_code, { approve: false })).body, {
+    found: true,
+    approved: false,
+  });
+  clock.advance(5);
+  assert.equal(await pollError(muse, first.device_code), "access_denied");
+  const empty = await begin({ scope: "inventory:read inventory:write" });
+  assert.deepEqual((await deviceFlow.decide(empty.user_code, { scopes: [] })).body, { found: true, approved: false });
+  assert.equal(await pollError(muse, empty.device_code), "access_denied");
+  // Ticking a scope the agent never asked for adds nothing.
+  const narrow = await begin();
+  await deviceFlow.decide(narrow.user_code, { scopes: ["inventory:read", "inventory:delete"] });
+  assert.equal((await deviceFlow.poll(muse, narrow.device_code)).body.scope, "inventory:read");
+
+  // After 10 minutes the code is dead on both sides.
+  const stale = await begin();
+  clock.advance(601);
+  assert.equal(await pollError(muse, stale.device_code), "expired_token");
+  assert.deepEqual((await deviceFlow.lookUp(stale.user_code)).body, { found: false });
+  assert.deepEqual((await deviceFlow.decide(stale.user_code)).body, { found: false });
+
+  // Approved in its last seconds, it can still be collected shortly after,
+  // but an approval nobody collects does not stay open.
+  const late = await begin();
+  const abandoned = await begin();
+  clock.advance(590);
+  assert.equal((await deviceFlow.decide(late.user_code)).body.approved, true);
+  assert.equal((await deviceFlow.decide(abandoned.user_code)).body.approved, true);
+  clock.advance(30);
+  assert.equal((await deviceFlow.poll(muse, late.device_code)).status, 200);
+  clock.advance(60);
+  assert.equal(await pollError(muse, abandoned.device_code), "expired_token");
+
+  // A request has to name scopes this site has, for this site, from an agent
+  // that proves who it is.
+  assert.equal((await deviceFlow.start(muse, { scope: undefined })).body.error, "invalid_scope");
+  assert.equal((await deviceFlow.start(muse, { scope: "inventory:admin" })).body.error, "invalid_scope");
+  assert.equal(
+    (await deviceFlow.start(muse, { resource: "https://elsewhere.example" })).body.error,
+    "invalid_target",
+  );
+  const anonymous = await call("POST", "/oauth/device", {
+    body: { client_id: muse.clientId, scope: "inventory:read" },
+  });
+  assert.equal(anonymous.status, 401);
+  assert.equal(anonymous.body.error, "invalid_client");
+});
+
+test("wrong device codes are counted against the account that typed them", async () => {
+  const { muse, clock, deviceFlow } = await setup();
+  const real = (await deviceFlow.start(muse)).body.user_code;
+
+  // Things that could not be a code are typos and cost nothing.
+  for (const typo of ["", "1234-5678", "AEIO-UAEI", "BCDF", null, "B".repeat(100)]) {
+    for (let i = 0; i < 4; i += 1) {
+      assert.deepEqual((await deviceFlow.lookUp(typo, "bob-id-token")).body, { found: false });
+    }
+  }
+  assert.equal((await deviceFlow.lookUp(real, "bob-id-token")).body.found, true);
+
+  // Ten well-formed wrong codes, and the account has to wait, even with the
+  // right code in hand, to look up or to answer.
+  for (let i = 0; i < 10; i += 1) {
+    const miss = await deviceFlow.lookUp("BBBB-BBBB");
+    assert.equal(miss.status, 200);
+    assert.deepEqual(miss.body, { found: false });
+  }
+  const locked = await deviceFlow.lookUp(real);
+  assert.equal(locked.status, 429);
+  assert.equal(locked.body.error, "too_many_attempts");
+  assert.equal((await deviceFlow.decide(real)).status, 429);
+  // Nobody else is held up by it.
+  assert.equal((await deviceFlow.lookUp(real, "bob-id-token")).body.found, true);
+
+  // The wait ends by itself.
+  clock.advance(15 * 60 + 1);
+  const fresh = (await deviceFlow.start(muse)).body.user_code;
+  assert.equal((await deviceFlow.lookUp(fresh)).body.found, true);
+});
+
+test("unenforced, an unidentified agent can use device sign-in but is shown as unverified", async () => {
+  const { muse, call, deviceFlow, identityLog } = await setup({ enforce: false });
+  const begin = (body) => call("POST", "/oauth/device", { body });
+  const poll = (deviceCode, clientId) =>
+    call("POST", "/oauth/token", {
+      body: { grant_type: DEVICE_GRANT, device_code: deviceCode, client_id: clientId },
+    });
+
+  // Something to bind the request to is still needed.
+  assert.equal((await begin({ scope: "inventory:read" })).status, 401);
+  assert.equal((await begin({ client_id: "x".repeat(2001), scope: "inventory:read" })).status, 401);
+
+  const started = await begin({ client_id: "muse-cli", scope: "inventory:read" });
+  assert.equal(started.status, 200);
+  assert.ok(identityLog.some((e) => e.stage === "device" && e.clientId === "muse-cli" && e.reason));
+
+  // The page is told nothing it could mistake for a confirmed name or address.
+  const info = await deviceFlow.lookUp(started.body.user_code);
+  assert.deepEqual(info.body.client, { verified: false, name: "", domain: "", logo_uri: null });
+  // A person must still sign in with Google and approve.
+  assert.equal((await deviceFlow.decide(started.body.user_code, { idToken: null })).status, 401);
+  assert.equal((await deviceFlow.decide(started.body.user_code)).body.approved, true);
+
+  // Only the client_id the request was started with can collect.
+  assert.equal((await poll(started.body.device_code, "someone-else")).body.error, "invalid_grant");
+  const token = await poll(started.body.device_code, "muse-cli");
+  assert.equal(token.status, 200);
+  const list = await call("GET", "/api/v1/items", {
+    headers: { Authorization: `Bearer ${token.body.access_token}` },
+  });
+  assert.equal(list.body.total, 3);
+
+  // The owner sees that the connection is unverified, and no invented address.
+  const mine = await call("GET", "/oauth/connections", { headers: { authorization: "Bearer alice-id-token" } });
+  assert.equal(mine.body.connections[0].verified, false);
+  assert.equal(mine.body.connections[0].name, "Unidentified agent");
+  assert.equal(mine.body.connections[0].domain, "");
+
+  // An agent that does prove itself is named, and held to its own device_code.
+  const proper = await deviceFlow.start(muse);
+  const shown = await deviceFlow.lookUp(proper.body.user_code);
+  assert.equal(shown.body.client.verified, true);
+  assert.equal(shown.body.client.name, "Muse");
+  // Claiming Muse's client_id without its keys is not being Muse.
+  const impostor = await begin({ client_id: muse.clientId, scope: "inventory:read" });
+  assert.equal((await deviceFlow.lookUp(impostor.body.user_code)).body.client.verified, false);
+});
+
+const MUSE_ID = "https://agent.example/agent.json";
+const DOWN_ID = "https://down.example/agent.json";
+
+test("this site ships with Muse approved, and only approved agents let in", () => {
+  const { APPROVED_CLIENTS, APPROVED_CLIENTS_ONLY } = require("../src/poppy/config");
+  assert.ok(APPROVED_CLIENTS.includes("https://muse.ai/poppy/agent.json"));
+  assert.equal(APPROVED_CLIENTS_ONLY, true);
+  for (const id of APPROVED_CLIENTS) assert.equal(new URL(id).protocol, "https:");
+});
+
+test("nobody can start a sign-in under an approved agent's client_id without being it", async () => {
+  // Identity is not enforced, so an unknown agent is still served unverified.
+  // DOWN_ID is approved but its metadata cannot be fetched right now.
+  const { muse, call, authRequest, signIn, deviceFlow, verifier } = await setup({
+    enforce: false,
+    approved: [MUSE_ID, DOWN_ID],
+  });
+  const request = (client_id) => ({
+    response_type: "code",
+    client_id,
+    redirect_uri: "https://elsewhere.example/cb",
+    scope: "inventory:read",
+    state: "s",
+    code_challenge: sha(verifier),
+    code_challenge_method: "S256",
+  });
+  const device = (client_id) => call("POST", "/oauth/device", { body: { client_id, scope: "inventory:read" } });
+
+  // At the consent page: an agent that is not on the list gets the unverified
+  // page, but an approved one whose metadata does not check out gets nothing.
+  assert.equal((await call("POST", "/oauth/request", { body: request("https://nobody.example/a.json") })).body.client.verified, false);
+  for (const id of [DOWN_ID, MUSE_ID]) {
+    const refused = await call("POST", "/oauth/request", { body: request(id) });
+    assert.ok(refused.body.error, id);
+    assert.equal(refused.body.client, undefined);
+    const decided = await call("POST", "/oauth/decision", {
+      headers: { authorization: "Bearer alice-id-token" },
+      body: { request: request(id), approve: true },
+    });
+    assert.ok(decided.body.error, id);
+    assert.equal(decided.body.redirect, undefined);
+  }
+
+  // Device Sign-In: claiming an approved client_id takes its signature.
+  assert.equal((await device("muse-cli")).status, 200);
+  for (const id of [DOWN_ID, MUSE_ID]) {
+    const refused = await device(id);
+    assert.equal(refused.status, 401, id);
+    assert.equal(refused.body.error, "invalid_client");
+  }
+
+  // The approved agent itself is unaffected, both ways in.
+  assert.equal((await call("POST", "/oauth/request", { body: authRequest(muse) })).body.client.verified, true);
+  assert.equal((await signIn(muse)).token.status, 200);
+  const started = await deviceFlow.start(muse);
+  assert.equal(started.status, 200);
+  assert.equal((await deviceFlow.lookUp(started.body.user_code)).body.client.name, "Muse");
+});
+
+test("approved-only: agents that are not on the list are refused everywhere", async () => {
+  const { hashToken } = require("../src/poppy/handler");
+  const { muse, other, store, call, authRequest, signIn, deviceFlow, api, tokenForm, identityLog } = await setup({
+    enforce: false,
+    approved: [MUSE_ID],
+    approvedOnly: true,
+  });
+
+  // `other` proves who it is perfectly well. It is just not approved.
+  const page = await call("POST", "/oauth/request", { body: authRequest(other) });
+  assert.match(page.body.error, /approved/);
+  assert.equal(page.body.client, undefined);
+  assert.ok(identityLog.some((e) => e.stage === "authorize" && e.clientId === other.clientId && e.reason));
+  const decided = await call("POST", "/oauth/decision", {
+    headers: { authorization: "Bearer alice-id-token" },
+    body: { request: authRequest(other), approve: true },
+  });
+  assert.ok(decided.body.error);
+  assert.equal(decided.body.redirect, undefined);
+
+  const device = await deviceFlow.start(other);
+  assert.equal(device.status, 401);
+  assert.equal(device.body.error, "invalid_client");
+  const refresh = await call("POST", "/oauth/token", {
+    body: await tokenForm(other, { grant_type: "refresh_token", refresh_token: "hpr_x" }),
+  });
+  assert.equal(refresh.status, 401);
+  assert.equal(refresh.body.error, "invalid_client");
+
+  // Nor does skipping identity help: an unidentified agent is not on the list.
+  const unidentified = { ...authRequest(other), client_id: "muse-cli", redirect_uri: "https://muse.example/cb" };
+  assert.ok((await call("POST", "/oauth/request", { body: unidentified })).body.error);
+  assert.equal((await call("POST", "/oauth/request", { body: { ...unidentified, client_id: undefined } })).body.client, undefined);
+  for (const body of [{ client_id: "muse-cli", scope: "inventory:read" }, { scope: "inventory:read" }]) {
+    assert.equal((await call("POST", "/oauth/device", { body })).status, 401);
+  }
+
+  // A token such an agent got before the list closed stops working at the API.
+  await store.putAccessToken(hashToken("hpa_from_before"), {
+    uid: "alice",
+    client_id: other.clientId,
+    scope: "inventory:read",
+    grant_id: "g",
+    expires_at: Date.now() + 60000,
+  });
+  const old = await api(other, "/api/v1/items", { accessToken: "hpa_from_before" });
+  assert.equal(old.status, 401);
+  assert.equal(old.headers["WWW-Authenticate"], 'Bearer error="invalid_token"');
+
+  // The approved agent signs in and works as usual, both ways in.
+  const { token } = await signIn(muse);
+  assert.equal(token.status, 200);
+  assert.equal((await api(muse, "/api/v1/items", { accessToken: token.body.access_token })).status, 200);
+  const started = await deviceFlow.start(muse);
+  assert.equal((await deviceFlow.decide(started.body.user_code)).body.approved, true);
+  assert.equal((await deviceFlow.poll(muse, started.body.device_code)).status, 200);
+});
+
+// A browser the agent controls: it keeps whatever cookie the site last set.
+function makeBrowser(call) {
+  const browser = {
+    cookie: undefined,
+    async visit(method, path, options = {}) {
+      const r = await call(method, path, { ...options, headers: browser.cookie ? { cookie: browser.cookie } : {} });
+      if (r.headers["Set-Cookie"]) browser.cookie = r.headers["Set-Cookie"].split(";")[0];
+      return r;
+    },
+    // Step 1 of the join: load the page and read the code out of its form.
+    async loadJoinPage() {
+      const page = await browser.visit("GET", JOIN);
+      return { page, code: /name="code" value="([^"]+)"/.exec(page.body)[1] };
+    },
+    submit: (code) => browser.visit("POST", JOIN, { body: { code } }),
+  };
+  return browser;
+}
+const JOIN = "/poppy/browser-session";
+const WEB = "inventory:read poppy:browser-sign-in";
+
+test("web browsing: the agent's browser joins its Session and sees the inventory read-only", async () => {
+  const { muse, store, clock, call, signIn, api } = await setup();
+  const authorize = (code, accessToken) =>
+    api(muse, `${JOIN}/authorize`, { method: "POST", accessToken, body: { code } });
+
+  const poppy = (await call("GET", "/.well-known/poppy.json")).body;
+  assert.deepEqual(poppy.web, { browser_session_endpoint: `${ORIGIN}${JOIN}` });
+  assert.ok(poppy.auth.scopes["poppy:browser-sign-in"]);
+  const server = (await call("GET", "/.well-known/oauth-authorization-server")).body;
+  assert.ok(server.scopes_supported.includes("poppy:browser-sign-in"));
+
+  const accessToken = (await signIn(muse, { ask: WEB })).token.body.access_token;
+  const browser = makeBrowser(call);
+  assert.equal((await browser.visit("GET", "/browse")).status, 401);
+
+  // Step 1: a form with a one-time code, and a cookie tying it to this browser.
+  const { page, code } = await browser.loadJoinPage();
+  assert.equal(page.status, 200);
+  assert.match(page.body, /<form method="post" action="\/poppy\/browser-session">/);
+  assert.equal(page.headers["Cache-Control"], "no-store");
+  assert.match(page.headers["Content-Security-Policy"], /frame-ancestors 'none'/);
+  assert.equal(page.headers["Cross-Origin-Opener-Policy"], "same-origin");
+  for (const attribute of ["Secure", "HttpOnly", "SameSite=Strict", "Path=/"]) {
+    assert.ok(page.headers["Set-Cookie"].includes(attribute), attribute);
+  }
+  assert.ok(!page.headers["Set-Cookie"].includes(code));
+  // Loading the page signs nothing in.
+  assert.equal((await browser.visit("GET", "/browse")).status, 401);
+
+  // Step 2: only the agent can authorize the code, once, and only a code we issued.
+  assert.deepEqual((await authorize("bc_made_up", accessToken)).body, { error: "invalid_request" });
+  const readOnly = (await signIn(muse)).token.body.access_token;
+  const noScope = await authorize(code, readOnly);
+  assert.equal(noScope.status, 403);
+  assert.equal(noScope.headers["WWW-Authenticate"], 'Bearer error="insufficient_scope", scope="poppy:browser-sign-in"');
+  assert.equal((await authorize(code, accessToken)).status, 204);
+  assert.equal((await authorize(code, accessToken)).status, 400);
+
+  // Step 3: the browser that loaded the page trades the code for the cookie.
+  const joined = await browser.submit(code);
+  assert.equal(joined.status, 303);
+  assert.equal(joined.headers.Location, "/browse");
+  assert.ok(!browser.cookie.includes("j."));
+  assert.ok(!browser.cookie.includes(accessToken));
+  assert.equal((await browser.submit(code)).status, 400);
+
+  // The inventory, as pages: top level, a container, an item, a search.
+  store.raw.alice.push({ id: "x", name: "<script>alert(1)</script>", description: "a & b", locationId: null });
+  const top = await browser.visit("GET", "/browse");
+  assert.equal(top.status, 200);
+  assert.match(top.headers["Content-Type"], /^text\/html/);
+  assert.match(top.headers["Content-Security-Policy"], /default-src 'none'/);
+  assert.ok(top.body.includes('<a href="/browse/items/g">Garage</a>'));
+  assert.ok(!top.body.includes("Shelf") && !top.body.includes("Bobs"));
+  assert.ok(top.body.includes("&lt;script&gt;alert(1)&lt;/script&gt;") && !top.body.includes("<script>"));
+  assert.ok(top.body.includes("Read-only view of this inventory for Muse"));
+  const garage = await browser.visit("GET", "/browse/items/g");
+  assert.ok(garage.body.includes('<a href="/browse/items/s">Shelf</a>'));
+  const drill = await browser.visit("GET", "/browse/items/d");
+  assert.ok(drill.body.includes("Cordless drill") && drill.body.includes("18V with two batteries"));
+  assert.ok(drill.body.indexOf("Garage") < drill.body.indexOf("Shelf"));
+  const found = await browser.visit("GET", "/browse", { query: { q: "DRILL" } });
+  assert.ok(found.body.includes("1 result") && found.body.includes("Garage › Shelf"));
+  for (const html of [top.body, garage.body, drill.body, found.body]) {
+    assert.ok(!html.includes("drive/secret") && !html.includes(accessToken));
+  }
+  // Someone else's item is not there, and there is nothing to post to.
+  assert.equal((await browser.visit("GET", "/browse/items/b")).status, 404);
+  assert.equal((await browser.visit("POST", "/browse", { body: { name: "x" } })).status, 404);
+  assert.equal((await browser.visit("DELETE", "/browse/items/d")).status, 404);
+  assert.ok(store.raw.alice.some((i) => i.id === "d"));
+
+  // Loading the join page again leaves the browser signed in.
+  await browser.loadJoinPage();
+  assert.equal((await browser.visit("GET", "/browse")).status, 200);
+
+  // A code is dead after five minutes, and the web session after an hour.
+  const late = await browser.loadJoinPage();
+  clock.advance(301);
+  assert.equal((await authorize(late.code, accessToken)).status, 400);
+  clock.advance(3600);
+  assert.equal((await browser.visit("GET", "/browse")).status, 401);
+});
+
+test("web browsing: a code works only in its own browser, and only with the person's approval", async () => {
+  const { muse, call, signIn, api } = await setup();
+  const authorize = (code, accessToken) =>
+    api(muse, `${JOIN}/authorize`, { method: "POST", accessToken, body: { code } });
+  const signedIn = await signIn(muse, { ask: WEB });
+  const accessToken = signedIn.token.body.access_token;
+
+  // A code is no use in a browser that did not load its page, and trying
+  // there uses it up. Nor is it any use before the agent has authorized it.
+  const browser = makeBrowser(call);
+  const thief = makeBrowser(call);
+  const first = await browser.loadJoinPage();
+  await thief.loadJoinPage();
+  assert.equal((await authorize(first.code, accessToken)).status, 204);
+  const stolen = await thief.submit(first.code);
+  assert.equal(stolen.status, 400);
+  assert.equal(stolen.headers["Set-Cookie"], undefined);
+  assert.equal((await browser.submit(first.code)).status, 400);
+  const early = await browser.loadJoinPage();
+  assert.equal((await browser.submit(early.code)).status, 400);
+  assert.equal((await authorize(early.code, accessToken)).status, 400);
+  assert.equal((await browser.visit("GET", "/browse")).status, 401);
+
+  // Joined without an access token, the browser belongs to the Session but
+  // is signed out, and the page names the scopes a sign-in needs.
+  const signedOut = await browser.loadJoinPage();
+  assert.equal((await authorize(signedOut.code)).status, 204);
+  assert.equal((await browser.submit(signedOut.code)).status, 303);
+  const nothing = await browser.visit("GET", "/browse");
+  assert.equal(nothing.status, 403);
+  assert.ok(nothing.body.includes("inventory:read") && nothing.body.includes("poppy:browser-sign-in"));
+  assert.ok(!nothing.body.includes("Garage"));
+
+  // The browser scope alone opens nothing: the pages apply inventory:read.
+  const browserOnly = (await signIn(muse, { ask: WEB, allow: ["poppy:browser-sign-in"] })).token.body.access_token;
+  const again = await browser.loadJoinPage();
+  assert.equal((await authorize(again.code, browserOnly)).status, 204);
+  assert.equal((await browser.submit(again.code)).status, 303);
+  const noRead = await browser.visit("GET", "/browse");
+  assert.equal(noRead.status, 403);
+  assert.ok(noRead.body.includes("inventory:read") && !noRead.body.includes("Garage"));
+
+  // Joined properly, then the owner disconnects the agent: the very next
+  // page load is signed out.
+  const proper = await browser.loadJoinPage();
+  assert.equal((await authorize(proper.code, accessToken)).status, 204);
+  assert.equal((await browser.submit(proper.code)).status, 303);
+  assert.equal((await browser.visit("GET", "/browse/items/g")).status, 200);
+  const owner = { authorization: "Bearer alice-id-token" };
+  const mine = (await call("GET", "/oauth/connections", { headers: owner })).body.connections;
+  for (const connection of mine) {
+    await call("POST", "/oauth/connections/revoke", { headers: owner, body: { id: connection.id } });
+  }
+  const after = await browser.visit("GET", "/browse/items/g");
+  assert.equal(after.status, 403);
+  assert.ok(!after.body.includes("Shelf"));
+
+  // The authorize call is checked like any API call: it needs the Session header.
+  const fresh = await browser.loadJoinPage();
+  const bare = await call("POST", `${JOIN}/authorize`, { body: { code: fresh.code } });
+  assert.equal(bare.status, 400);
+  assert.equal(bare.body.error, "invalid_session");
 });
 
 test("identity checks are logged either way when enforced", async () => {
