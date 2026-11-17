@@ -104,11 +104,14 @@ function createWebPages({ store, now, checkAgent, shutOut, send, shapeItems, has
     sendHtml(res, 200, html, { "Set-Cookie": writeCookie({ j: joinSecret, w: readCookie(req).w }) });
   }
 
-  // Step 2. The agent vouches for the code: this Session, and, when it sends
-  // an access token, this account and these scopes. A token has to carry the
-  // browser sign-in scope, or it is refused as at an API.
+  // Step 2. The agent vouches for the code: this Session, this account, and
+  // these scopes. An access token carrying the browser sign-in scope is
+  // required, as at an API. The spec also lets an agent join its browser
+  // signed out, but this site shows nothing to a signed-out browser, so a
+  // request without a token is refused with a 401 naming the scope rather
+  // than joining a browser that can only reach a dead end.
   async function authorizeCode(req, res) {
-    const checked = await checkAgent(req, res, BROWSER_SCOPE, { tokenOptional: true });
+    const checked = await checkAgent(req, res, BROWSER_SCOPE);
     if (!checked) return;
     const { record, session } = checked;
     const invalid = () => send(res, 400, { error: "invalid_request" });
@@ -119,10 +122,10 @@ function createWebPages({ store, now, checkAgent, shutOut, send, shapeItems, has
     if (!issued || issued.expires_at < now()) return invalid();
     const authorized = await store.moveBrowserCode(hash, "issued", {
       status: "authorized",
-      uid: record ? record.uid : null,
-      client_id: record ? record.client_id : session ? session.clientId : null,
-      grant_id: record ? record.grant_id : null,
-      scope: record ? record.scope : "",
+      uid: record.uid,
+      client_id: record.client_id,
+      grant_id: record.grant_id,
+      scope: record.scope,
       sid: session ? session.sid : null,
     });
     if (!authorized) return invalid();

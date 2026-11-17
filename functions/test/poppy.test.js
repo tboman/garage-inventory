@@ -1412,15 +1412,16 @@ test("web browsing: a code works only in its own browser, and only with the pers
   assert.equal((await authorize(early.code, accessToken)).status, 400);
   assert.equal((await browser.visit("GET", "/browse")).status, 401);
 
-  // Joined without an access token, the browser belongs to the Session but
-  // is signed out, and the page names the scopes a sign-in needs.
+  // Authorizing without an access token is refused, naming the scope a
+  // sign-in needs, and leaves the code unauthorized: the browser cannot join.
   const signedOut = await browser.loadJoinPage();
-  assert.equal((await authorize(signedOut.code)).status, 204);
-  assert.equal((await browser.submit(signedOut.code)).status, 303);
-  const nothing = await browser.visit("GET", "/browse");
-  assert.equal(nothing.status, 403);
-  assert.ok(nothing.body.includes("inventory:read") && nothing.body.includes("poppy:browser-sign-in"));
-  assert.ok(!nothing.body.includes("Garage"));
+  const noToken = await authorize(signedOut.code);
+  assert.equal(noToken.status, 401);
+  assert.equal(noToken.headers["WWW-Authenticate"], 'Bearer scope="poppy:browser-sign-in"');
+  const refused = await browser.submit(signedOut.code);
+  assert.equal(refused.status, 400);
+  assert.ok(refused.body.includes("had not authorized this code"));
+  assert.equal((await browser.visit("GET", "/browse")).status, 401);
 
   // The browser scope alone opens nothing: the pages apply inventory:read.
   const browserOnly = (await signIn(muse, { ask: WEB, allow: ["poppy:browser-sign-in"] })).token.body.access_token;
