@@ -63,10 +63,20 @@
         { "source": "/.well-known/oauth-authorization-server", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/.well-known/oauth-protected-resource", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/.well-known/oauth-protected-resource/**", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/request", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/decision", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/token", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/revoke", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/device", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/device/request", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/device/decision", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/connections", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/oauth/connections/revoke", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/poppy/browser-session", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/poppy/browser-session/authorize", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/browse", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "/browse/**", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/api/**", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
         { "source": "**", "destination": "/index.html" }
       ],
       "headers": [
@@ -107,5 +117,11 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "functions": { "port": 5001 },
+    "ui": { "enabled": true }
   }
 }

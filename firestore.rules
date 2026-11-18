@@ -113,6 +113,172 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // storageloot.shop agent sign-in: codes, grants, tokens, and Device
+    // Sign-In requests, kept apart from hunapuka.com's.
+    match /storageloot_poppy_codes/{hash} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_poppy_grants/{hash} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_poppy_access_tokens/{hash} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_poppy_device_codes/{hash} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_poppy_device_attempts/{uid} {
+      allow read, write: if false;
+    }
+
+    // ---- StorageLoot messages ------------------------------------------------
+    // One two-way conversation per buyer per listing, id `{listingId}_{buyerUid}`.
+    // The buyer starts it, with its first message, in one batched write. The
+    // Cloud Functions write the same documents for agents (functions/src/messages.js
+    // checks the same fields as these rules).
+
+    function listingData(listingId) {
+      return get(/databases/$(database)/documents/listings/$(listingId)).data;
+    }
+
+    function optionalString(data, field, max) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= max);
+    }
+
+    match /conversations/{conversationId} {
+      function readField() {
+        return request.auth.uid == resource.data.sellerId ? 'sellerReadAt' : 'buyerReadAt';
+      }
+
+      // A missing conversation may be looked up (it reveals nothing), so the
+      // buyer can check whether they have written about a listing before.
+      allow read: if request.auth != null
+        && (resource == null || request.auth.uid in resource.data.participants);
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['listingId', 'listingTitle', 'listingPhoto', 'sellerId',
+             'sellerDisplayName', 'buyerId', 'buyerDisplayName', 'participants', 'createdAt',
+             'lastMessageAt', 'lastMessageText', 'lastSenderId', 'sellerReadAt', 'buyerReadAt'])
+        && request.resource.data.listingId is string
+        && conversationId == request.resource.data.listingId + '_' + request.auth.uid
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.sellerId == listingData(request.resource.data.listingId).sellerId
+        && request.resource.data.sellerId != request.auth.uid
+        && listingData(request.resource.data.listingId).status == 'active'
+        && request.resource.data.participants == [request.resource.data.sellerId, request.auth.uid]
+        && request.resource.data.listingTitle is string
+        && request.resource.data.listingTitle.size() <= 120
+        && optionalString(request.resource.data, 'listingPhoto', 2000)
+        && request.resource.data.sellerDisplayName is string
+        && request.resource.data.sellerDisplayName.size() <= 100
+        && request.resource.data.buyerDisplayName is string
+        && request.resource.data.buyerDisplayName.size() <= 100
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.lastMessageAt == request.time
+        && request.resource.data.lastSenderId == request.auth.uid
+        && request.resource.data.lastMessageText is string
+        && request.resource.data.lastMessageText.size() <= 140
+        && request.resource.data.buyerReadAt == request.time
+        && request.resource.data.sellerReadAt == null;
+
+      // A participant posts (the last* fields) or marks their own side read.
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['lastMessageAt', 'lastMessageText', 'lastSenderId', readField()])
+        && request.resource.data.lastSenderId in resource.data.participants
+        && (request.resource.data.lastSenderId == resource.data.lastSenderId
+            || request.resource.data.lastSenderId == request.auth.uid)
+        && (request.resource.data.lastMessageAt == resource.data.lastMessageAt
+            || request.resource.data.lastMessageAt == request.time)
+        && request.resource.data.lastMessageText is string
+        && request.resource.data.lastMessageText.size() <= 140
+        && (request.resource.data[readField()] == resource.data[readField()]
+            || request.resource.data[readField()] == request.time);
+
+      match /messages/{messageId} {
+        // getAfter: the first message is written in the same batch that
+        // creates the conversation.
+        function convo() {
+          return getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data;
+        }
+
+        function role() {
+          return request.auth.uid == convo().sellerId ? 'seller' : 'buyer';
+        }
+
+        function validMessage(m) {
+          return m.keys().hasOnly(['senderId', 'senderRole', 'kind', 'text', 'createdAt',
+                   'offerAmount', 'currency', 'offerStatus', 'platform'])
+            && m.senderId == request.auth.uid
+            && m.senderRole == role()
+            && m.createdAt == request.time
+            && m.text is string
+            && m.text.size() <= 2000
+            && (
+              (m.kind in ['reply', 'inquiry'] && m.text.size() > 0
+                && !('offerAmount' in m) && !('platform' in m)
+                && (m.kind == 'reply' || m.senderRole == 'buyer'))
+              || (m.kind == 'offer' && m.senderRole == 'buyer'
+                && m.offerAmount is int && m.offerAmount > 0 && m.offerAmount <= 100000000
+                && m.currency is string && m.currency.size() == 3
+                && m.offerStatus == 'pending' && !('platform' in m))
+              || (m.kind == 'listing_request' && m.senderRole == 'buyer'
+                && m.platform in ['ebay', 'craigslist'] && !('offerAmount' in m))
+            );
+        }
+
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+
+        allow create: if request.auth != null
+          && request.auth.uid in convo().participants
+          && validMessage(request.resource.data);
+
+        // Only the seller answers an offer, and only once.
+        allow update: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.sellerId
+          && resource.data.kind == 'offer'
+          && resource.data.offerStatus == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offerStatus', 'respondedAt'])
+          && request.resource.data.offerStatus in ['accepted', 'declined']
+          && request.resource.data.respondedAt == request.time;
+      }
+    }
+
+    // Where the seller has listed an item on another marketplace. Placeholders
+    // for now: the assisted listing flows come later. Seller only. Buyer
+    // requests are counted by the onListingRequest function, never by clients.
+    match /listings/{listingId}/marketplaces/{platform} {
+      function isSeller() {
+        return request.auth != null && request.auth.uid == listingData(listingId).sellerId;
+      }
+
+      function validMarketplace(d) {
+        return platform in ['ebay', 'nextdoor', 'facebook', 'craigslist']
+          && d.keys().hasOnly(['status', 'url', 'externalId', 'notes', 'requestCount', 'lastRequestedAt', 'updatedAt'])
+          && d.status in ['requested', 'planned', 'in_progress', 'listed', 'ended']
+          && (!('url' in d) || d.url == null
+              || (d.url is string && d.url.size() <= 2000 && d.url.matches('https://[^ ]+')))
+          && optionalString(d, 'externalId', 200)
+          && optionalString(d, 'notes', 500)
+          && d.updatedAt == request.time;
+      }
+
+      allow read, delete: if isSeller();
+      allow create: if isSeller()
+        && validMarketplace(request.resource.data)
+        && !('requestCount' in request.resource.data)
+        && !('lastRequestedAt' in request.resource.data);
+      allow update: if isSeller()
+        && validMarketplace(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['requestCount', 'lastRequestedAt']);
+    }
+
     match /listings/{listingId} {
       allow read: if true;
       allow create: if request.auth != null

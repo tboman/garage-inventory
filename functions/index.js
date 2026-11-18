@@ -7,6 +7,7 @@ const { getActiveEbayListings } = require("./src/getActiveEbayListings");
 const { mintAuthorizationCode } = require("./src/mintAuthorizationCode");
 const { getRegisteredAgent } = require("./src/getRegisteredAgent");
 const { poppy, poppyStorageloot, poppyCleanup } = require("./src/poppy");
+const { onListingRequest } = require("./src/onListingRequest");
 
 exports.exportListing = exportListing;
 exports.cleanupExpired = cleanupExpired;
@@ -19,3 +20,4 @@ exports.getRegisteredAgent = getRegisteredAgent;
 exports.poppy = poppy;
 exports.poppyStorageloot = poppyStorageloot;
 exports.poppyCleanup = poppyCleanup;
+exports.onListingRequest = onListingRequest;

@@ -38,19 +38,23 @@ exports.poppy = onRequest({ region: "us-central1", maxInstances: 5 }, (req, res)
   getHandler()(req, res),
 );
 
-// storageloot.shop: anonymous browsing of public listings (src/poppy/storageloot.js).
-// Firebase Hosting rewrites its Poppy paths on the storageloot target here.
+// storageloot.shop (src/poppy/storageloot.js): browsing of public listings,
+// and sign-in for agents handling a person's conversations with buyers and
+// sellers. Firebase Hosting rewrites its Poppy paths on the storageloot target here.
 let storageLootHandler;
 function getStorageLootHandler() {
   if (!storageLootHandler) {
+    const clients = createClientDirectory();
     storageLootHandler = createStorageLootHandler({
       store: createStorageLootStore(),
+      clients,
       jwt: createJwtVerifier({
-        clients: createClientDirectory(),
+        clients,
         issuer: STORAGELOOT.ORIGIN,
         origin: STORAGELOOT.ORIGIN,
         usedIds: getUsedIds(),
       }),
+      verifyIdToken: (token) => admin.auth().verifyIdToken(token),
     });
   }
   return storageLootHandler;

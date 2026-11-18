@@ -15,6 +15,10 @@ import MyGroupsPage from './pages/MyGroupsPage';
 import EbayAuthCallback from './pages/EbayAuthCallback';
 import MyEbayListingsPage from './pages/MyEbayListingsPage';
 import AgentAuthorizePage from './pages/AgentAuthorizePage';
+import AgentConsentPage from './pages/AgentConsentPage';
+import AgentDevicePage from './pages/AgentDevicePage';
+import MessagesPage from './pages/MessagesPage';
+import ConversationPage from './pages/ConversationPage';
 
 function App() {
   return (
@@ -37,6 +41,11 @@ function App() {
               <Route path="/ebayAuthCallback" element={<EbayAuthCallback />} />
               <Route path="/my-ebay" element={<MyEbayListingsPage />} />
               <Route path="/authorize" element={<AgentAuthorizePage />} />
+              <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/messages/:id" element={<ConversationPage />} />
+              {/* Personal Agent Protocol sign-in (poppyStorageloot); /authorize above is the MCP consent page. */}
+              <Route path="/oauth/authorize" element={<AgentConsentPage />} />
+              <Route path="/device" element={<AgentDevicePage />} />
               <Route path="*" element={
                 <div className="container py-5 text-center">
                   <h1>404</h1>

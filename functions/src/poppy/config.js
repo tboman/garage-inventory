@@ -153,18 +153,38 @@ const PATHS = {
   api: "/api/v1",
 };
 
-// storageloot.shop: public browsing only. An agent joins its browser to its
-// Session anonymously, with a verified Poppy-Session header and no access
-// token, and is shown read-only pages of the marketplace's active listings.
-// No sign-in, scopes, or API there; the site is its own Company (issuer) for
-// Session JWTs, so a Session meant for hunapuka.com is refused there and the
-// other way round. APPROVED_CLIENTS above applies to it too.
+// storageloot.shop: the site is its own Company (issuer), so Session JWTs and
+// tokens for hunapuka.com are refused there and the other way round.
+// APPROVED_CLIENTS above applies to it too.
+//   - Public browsing: an agent joins its browser anonymously (Session header,
+//     no access token) and sees read-only pages of active listings.
+//   - Sign-in with its own scopes, for the person's conversations with
+//     sellers and buyers: inquiries, offers, listing requests, and replies.
+//     Agents can never accept or decline an offer; that stays with the person.
 const STORAGELOOT = {
   ORIGIN: "https://storageloot.shop",
   DOMAIN: "storageloot.shop",
   NAME: "StorageLoot",
   // Where listing photos are served from: Firebase Storage, both URL forms.
   IMAGE_HOSTS: ["https://firebasestorage.googleapis.com", "https://storage.googleapis.com"],
+  SCOPES: {
+    "messages:read": {
+      description:
+        "Read your StorageLoot conversations: questions, offers, and listing requests " +
+        "between you and buyers or sellers, with their names. Read only.",
+      hints: { changes: "none", personal_data: true },
+    },
+    "messages:send": {
+      description:
+        "Write to sellers for you (ask about an item, make an offer, or ask them to list " +
+        "it on eBay or Craigslist) and reply in your conversations. Messages show they came " +
+        "from your agent. It cannot accept or decline offers, and it does not by itself let " +
+        "the agent read your conversations.",
+      hints: { changes: "irreversible", personal_data: true },
+    },
+  },
+  // How many messages one connected agent may send in an hour.
+  AGENT_MESSAGES_PER_HOUR: 30,
 };
 
 module.exports = {

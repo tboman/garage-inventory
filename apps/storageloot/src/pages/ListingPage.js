@@ -5,6 +5,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useMyGroups } from '../hooks/useGroups';
 import StatusBadge from '../components/StatusBadge';
 import ExternalLinks from '../components/ExternalLinks';
+import ContactSeller from '../components/ContactSeller';
+import MarketplacesPanel from '../components/MarketplacesPanel';
 
 const conditionLabels = {
   new: 'New',
@@ -20,7 +22,7 @@ function formatPrice(cents) {
 
 export default function ListingPage() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
@@ -180,6 +182,12 @@ export default function ListingPage() {
               <ExternalLinks links={listing.externalLinks} />
             </div>
           )}
+
+          {!isOwner && listing.status === 'active' && (
+            <ContactSeller listing={listing} user={user} login={login} />
+          )}
+
+          {isOwner && <MarketplacesPanel listingId={listing.id} />}
 
           {isOwner && (
             <div className="border rounded p-3 mb-3 bg-light">
