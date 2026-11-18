@@ -153,7 +153,22 @@ const PATHS = {
   api: "/api/v1",
 };
 
+// storageloot.shop: public browsing only. An agent joins its browser to its
+// Session anonymously, with a verified Poppy-Session header and no access
+// token, and is shown read-only pages of the marketplace's active listings.
+// No sign-in, scopes, or API there; the site is its own Company (issuer) for
+// Session JWTs, so a Session meant for hunapuka.com is refused there and the
+// other way round. APPROVED_CLIENTS above applies to it too.
+const STORAGELOOT = {
+  ORIGIN: "https://storageloot.shop",
+  DOMAIN: "storageloot.shop",
+  NAME: "StorageLoot",
+  // Where listing photos are served from: Firebase Storage, both URL forms.
+  IMAGE_HOSTS: ["https://firebasestorage.googleapis.com", "https://storage.googleapis.com"],
+};
+
 module.exports = {
+  STORAGELOOT,
   ORIGIN,
   DOMAIN,
   ISSUER,

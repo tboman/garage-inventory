@@ -3,7 +3,50 @@
 // database read never yields a usable credential. Every collection here is
 // closed to clients by firestore.rules; only the admin SDK touches them.
 
+const { createHash } = require("node:crypto");
 const admin = require("firebase-admin");
+
+// The jti of every client assertion and Session JWT seen, by hash, shared by
+// both sites and every function instance so a captured JWT works only once.
+const USED_IDS = "poppy_used_jtis";
+
+// Deletes every document in `names` whose expires_at has passed, in batches,
+// until none are left or `maxBatches` is reached (the next run picks up the
+// rest). Anyone can load a join page, so these can pile up quickly.
+async function deleteExpiredIn(db, names, nowMs, { batchSize = 400, maxBatches = 250 } = {}) {
+  let total = 0;
+  for (const name of names) {
+    for (let i = 0; i < maxBatches; i++) {
+      const snap = await db.collection(name).where("expires_at", "<", nowMs).limit(batchSize).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      total += snap.size;
+      if (snap.size < batchSize) break;
+    }
+  }
+  return total;
+}
+
+// The shared replay record for jwt.js. A transaction makes the check and the
+// write one step, so two instances racing on the same jti cannot both win.
+function createUsedIdStore() {
+  if (!admin.apps.length) admin.initializeApp();
+  const db = admin.firestore();
+  return {
+    async claim(key, expiresAtMs, nowMs) {
+      const ref = db.collection(USED_IDS).doc(createHash("sha256").update(key).digest("base64url"));
+      return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists && snap.data().expires_at >= nowMs) return false;
+        tx.set(ref, { expires_at: expiresAtMs });
+        return true;
+      });
+    },
+    deleteExpired: (nowMs) => deleteExpiredIn(db, [USED_IDS], nowMs),
+  };
+}
 
 const CODES = "poppy_codes";
 const GRANTS = "poppy_grants";
@@ -16,6 +59,54 @@ const DEVICE_MISSES = "poppy_device_attempts";
 // and the cookie sessions those joins create.
 const BROWSER_CODES = "poppy_browser_codes";
 const WEB_SESSIONS = "poppy_web_sessions";
+
+// The browser join's codes and web sessions (join.js), kept in the two
+// collections a site names, so one site's codes and cookies mean nothing on
+// another.
+function browserJoinStore(db, BROWSER_CODES, WEB_SESSIONS) {
+  return {
+    async putBrowserCode(hash, data) {
+      await db.collection(BROWSER_CODES).doc(hash).set(data);
+    },
+
+    async getBrowserCode(hash) {
+      const snap = await db.collection(BROWSER_CODES).doc(hash).get();
+      return snap.exists ? snap.data() : null;
+    },
+
+    // As moveDeviceRequest: applies `patch` only from status `from`.
+    async moveBrowserCode(hash, from, patch) {
+      const ref = db.collection(BROWSER_CODES).doc(hash);
+      return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists || snap.data().status !== from) return false;
+        tx.update(ref, patch);
+        return true;
+      });
+    },
+
+    // Uses the code up and returns what it was. Null if there is no such
+    // code or it was submitted before, so a code only ever works once.
+    async useBrowserCode(hash) {
+      const ref = db.collection(BROWSER_CODES).doc(hash);
+      return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists || snap.data().status === "used") return null;
+        tx.update(ref, { status: "used" });
+        return snap.data();
+      });
+    },
+
+    async putWebSession(hash, data) {
+      await db.collection(WEB_SESSIONS).doc(hash).set(data);
+    },
+
+    async getWebSession(hash) {
+      const snap = await db.collection(WEB_SESSIONS).doc(hash).get();
+      return snap.exists ? snap.data() : null;
+    },
+  };
+}
 
 function createFirestoreStore() {
   if (!admin.apps.length) admin.initializeApp();
@@ -83,46 +174,7 @@ function createFirestoreStore() {
       });
     },
 
-    async putBrowserCode(hash, data) {
-      await db.collection(BROWSER_CODES).doc(hash).set(data);
-    },
-
-    async getBrowserCode(hash) {
-      const snap = await db.collection(BROWSER_CODES).doc(hash).get();
-      return snap.exists ? snap.data() : null;
-    },
-
-    // As moveDeviceRequest: applies `patch` only from status `from`.
-    async moveBrowserCode(hash, from, patch) {
-      const ref = db.collection(BROWSER_CODES).doc(hash);
-      return db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists || snap.data().status !== from) return false;
-        tx.update(ref, patch);
-        return true;
-      });
-    },
-
-    // Uses the code up and returns what it was. Null if there is no such
-    // code or it was submitted before, so a code only ever works once.
-    async useBrowserCode(hash) {
-      const ref = db.collection(BROWSER_CODES).doc(hash);
-      return db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists || snap.data().status === "used") return null;
-        tx.update(ref, { status: "used" });
-        return snap.data();
-      });
-    },
-
-    async putWebSession(hash, data) {
-      await db.collection(WEB_SESSIONS).doc(hash).set(data);
-    },
-
-    async getWebSession(hash) {
-      const snap = await db.collection(WEB_SESSIONS).doc(hash).get();
-      return snap.exists ? snap.data() : null;
-    },
+    ...browserJoinStore(db, BROWSER_CODES, WEB_SESSIONS),
 
     async getDeviceMisses(uid) {
       const snap = await db.collection(DEVICE_MISSES).doc(uid).get();
@@ -162,6 +214,10 @@ function createFirestoreStore() {
     async getAccessToken(hash) {
       const snap = await db.collection(ACCESS).doc(hash).get();
       return snap.exists ? snap.data() : null;
+    },
+
+    async updateAccessToken(hash, patch) {
+      await db.collection(ACCESS).doc(hash).update(patch);
     },
 
     async deleteAccessToken(hash) {
@@ -205,19 +261,40 @@ function createFirestoreStore() {
       await db.collection("users").doc(uid).collection("items").doc(id).delete();
     },
 
-    async deleteExpired(nowMs) {
-      let total = 0;
-      for (const name of [CODES, GRANTS, ACCESS, DEVICE, DEVICE_MISSES, BROWSER_CODES, WEB_SESSIONS]) {
-        const snap = await db.collection(name).where("expires_at", "<", nowMs).limit(400).get();
-        if (snap.empty) continue;
-        const batch = db.batch();
-        snap.docs.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-        total += snap.size;
-      }
-      return total;
-    },
+    deleteExpired: (nowMs) =>
+      deleteExpiredIn(db, [CODES, GRANTS, ACCESS, DEVICE, DEVICE_MISSES, BROWSER_CODES, WEB_SESSIONS], nowMs),
   };
 }
 
-module.exports = { createFirestoreStore };
+// storageloot.shop: the browser join and the marketplace's listings, which
+// are public. Its join collections are its own (see browserJoinStore).
+const STORAGELOOT_BROWSER_CODES = "storageloot_poppy_browser_codes";
+const STORAGELOOT_WEB_SESSIONS = "storageloot_poppy_web_sessions";
+
+function createStorageLootStore() {
+  if (!admin.apps.length) admin.initializeApp();
+  const db = admin.firestore();
+  return {
+    ...browserJoinStore(db, STORAGELOOT_BROWSER_CODES, STORAGELOOT_WEB_SESSIONS),
+
+    // Active listings, newest first. Only active ones are public on the site.
+    async listActiveListings(limit = 500) {
+      const snap = await db
+        .collection("listings")
+        .where("status", "==", "active")
+        .orderBy("createdAt", "desc")
+        .limit(limit)
+        .get();
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async getListing(id) {
+      const snap = await db.collection("listings").doc(id).get();
+      return snap.exists ? { id: snap.id, ...snap.data() } : null;
+    },
+
+    deleteExpired: (nowMs) => deleteExpiredIn(db, [STORAGELOOT_BROWSER_CODES, STORAGELOOT_WEB_SESSIONS], nowMs),
+  };
+}
+
+module.exports = { createFirestoreStore, createStorageLootStore, createUsedIdStore, deleteExpiredIn };

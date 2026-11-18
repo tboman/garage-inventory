@@ -4,10 +4,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createHash, randomBytes } = require("node:crypto");
-const jose = require("jose");
 const { ClientError, createClientDirectory } = require("../src/poppy/clientMetadata");
 const { createJwtVerifier } = require("../src/poppy/jwt");
 const { createPoppyHandler, shapeItems } = require("../src/poppy/handler");
+const { makeAgent, makeCaller, makeBrowser, JOIN } = require("../test-support/fakeAgent");
 
 const ORIGIN = "https://hunapuka.com";
 const ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
@@ -109,6 +109,9 @@ function memoryStore(itemsByUid) {
     async getAccessToken(h) {
       return access.has(h) ? { ...access.get(h) } : null;
     },
+    async updateAccessToken(h, patch) {
+      Object.assign(access.get(h), patch);
+    },
     async deleteAccessToken(h) {
       access.delete(h);
     },
@@ -136,71 +139,6 @@ function memoryStore(itemsByUid) {
       itemsByUid[uid] = itemsByUid[uid].filter((i) => i.id !== id);
     },
     raw: itemsByUid,
-  };
-}
-
-// A Personal Agent with a published root key and a delegated Session key.
-async function makeAgent(host, { alg = "ES256" } = {}) {
-  const root = await jose.generateKeyPair(alg, { extractable: true });
-  const rootJwk = { ...(await jose.exportJWK(root.publicKey)), kid: `root-${host}`, use: "sig" };
-  const session = await jose.generateKeyPair("ES256", { extractable: true });
-  const sessionJwk = await jose.exportJWK(session.publicKey);
-  const clientId = `https://${host}/agent.json`;
-  const redirectUri = `https://${host}/oauth/callback`;
-  const nowS = () => Math.floor(Date.now() / 1000);
-
-  return {
-    clientId,
-    redirectUri,
-    documents: {
-      [clientId]: {
-        client_id: clientId,
-        client_name: "Muse",
-        jwks_uri: `https://${host}/jwks.json`,
-        redirect_uris: [redirectUri],
-        token_endpoint_auth_method: "private_key_jwt",
-      },
-      [`https://${host}/jwks.json`]: { keys: [rootJwk] },
-    },
-    assertion({ aud = ORIGIN, iat = nowS(), lifetime = 120 } = {}) {
-      return new jose.SignJWT({ jti: rid() })
-        .setProtectedHeader({ alg, kid: rootJwk.kid })
-        .setIssuer(clientId)
-        .setSubject(clientId)
-        .setAudience(aud)
-        .setIssuedAt(iat)
-        .setExpirationTime(iat + lifetime)
-        .sign(root.privateKey);
-    },
-    async sessionHeader({ method = "GET", path, accessToken, claims = {}, header = {} }) {
-      const delegation = await new jose.SignJWT({ cnf: { jwk: sessionJwk }, jti: rid() })
-        .setProtectedHeader({ alg, typ: "poppy-delegation+jwt", kid: rootJwk.kid })
-        .setIssuer(clientId)
-        .setIssuedAt()
-        .setExpirationTime("1h")
-        .sign(root.privateKey);
-      const body = {
-        iss: clientId,
-        aud: ORIGIN,
-        sid: "sid_1",
-        sub: "usr_1",
-        htm: method,
-        htu: `${ORIGIN}${path}`,
-        iat: nowS(),
-        jti: rid(),
-        ...(accessToken ? { ath: sha(accessToken) } : {}),
-        ...claims,
-      };
-      return new jose.SignJWT(body)
-        .setProtectedHeader({
-          alg: "ES256",
-          typ: "poppy-session+jwt",
-          kid: await jose.calculateJwkThumbprint(sessionJwk),
-          poppy_dlg: delegation,
-          ...header,
-        })
-        .sign(session.privateKey);
-    },
   };
 }
 
@@ -273,29 +211,7 @@ async function setup({ enforce = true, approved = [], approvedOnly = false } = {
     },
   });
 
-  async function call(method, path, { headers = {}, body, query = {} } = {}) {
-    const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-    const out = { status: 200, headers: {}, body: undefined };
-    const res = {
-      status(s) {
-        out.status = s;
-        return res;
-      },
-      set(h) {
-        Object.assign(out.headers, h);
-        return res;
-      },
-      json(b) {
-        out.body = b;
-      },
-      send(b) {
-        out.body = b;
-      },
-      end() {},
-    };
-    await handler({ method, path, query, body, get: (n) => lower[n.toLowerCase()] }, res);
-    return out;
-  }
+  const call = makeCaller(handler);
 
   const verifier = b64(randomBytes(32));
   const authRequest = (agent, extra = {}) => ({
@@ -421,6 +337,31 @@ test("discovery documents agree with each other", async () => {
   for (const alg of ["ES256", "PS384"]) {
     assert.ok(server.token_endpoint_auth_signing_alg_values_supported.includes(alg));
   }
+});
+
+test("protected resource metadata is also served at addresses built from API URLs (RFC 9728)", async () => {
+  const { muse, call, authRequest } = await setup();
+  // A client calling https://hunapuka.com/api/v1/items may fetch the metadata
+  // at the well-known address followed by that path, and must find exactly
+  // that URL as `resource`.
+  for (const path of ["/api/v1", "/api/v1/items", "/api/v1/items/poppy_abc123"]) {
+    const r = await call("GET", `/.well-known/oauth-protected-resource${path}`);
+    assert.equal(r.status, 200, path);
+    assert.equal(r.body.resource, `${ORIGIN}${path}`);
+    assert.deepEqual(r.body.authorization_servers, [ORIGIN]);
+    assert.ok(r.body.scopes_supported.includes("inventory:read"));
+  }
+  // Nothing outside the API is a protected resource, and nothing odd gets through.
+  for (const path of ["/browse", "/api/v2", "/api/v1x", "/api/v1/<script>", "/"]) {
+    const r = await call("GET", `/.well-known/oauth-protected-resource${path}`);
+    assert.equal(r.status, 404, path);
+    assert.equal(r.body.error, "not_found");
+  }
+  // A sign-in may name the resource by any of those URLs, but not by another site.
+  const ok = await call("POST", "/oauth/request", { body: authRequest(muse, { resource: `${ORIGIN}/api/v1/items` }) });
+  assert.equal(ok.body.error, undefined);
+  const bad = await call("POST", "/oauth/request", { body: authRequest(muse, { resource: `${ORIGIN}.evil.example/api/v1` }) });
+  assert.equal(new URL(bad.body.redirect).searchParams.get("error"), "invalid_target");
 });
 
 test("0.4 is still served, in its own document that names the same Company", async () => {
@@ -1285,24 +1226,6 @@ test("approved-only: agents that are not on the list are refused everywhere", as
 });
 
 // A browser the agent controls: it keeps whatever cookie the site last set.
-function makeBrowser(call) {
-  const browser = {
-    cookie: undefined,
-    async visit(method, path, options = {}) {
-      const r = await call(method, path, { ...options, headers: browser.cookie ? { cookie: browser.cookie } : {} });
-      if (r.headers["Set-Cookie"]) browser.cookie = r.headers["Set-Cookie"].split(";")[0];
-      return r;
-    },
-    // Step 1 of the join: load the page and read the code out of its form.
-    async loadJoinPage() {
-      const page = await browser.visit("GET", JOIN);
-      return { page, code: /name="code" value="([^"]+)"/.exec(page.body)[1] };
-    },
-    submit: (code) => browser.visit("POST", JOIN, { body: { code } }),
-  };
-  return browser;
-}
-const JOIN = "/poppy/browser-session";
 const WEB = "inventory:read poppy:browser-sign-in";
 
 test("web browsing: the agent's browser joins its Session and sees the inventory read-only", async () => {
@@ -1455,7 +1378,7 @@ test("web browsing: a code works only in its own browser, and only with the pers
 });
 
 test("identity checks are logged either way when enforced", async () => {
-  const { muse, call, authRequest, signIn, api, identityLog } = await setup();
+  const { muse, store, clock, call, authRequest, signIn, api, identityLog } = await setup();
   await call("POST", "/oauth/request", {
     body: authRequest(muse, { client_id: "https://nobody.example/agent.json" }),
   });
@@ -1466,10 +1389,27 @@ test("identity checks are logged either way when enforced", async () => {
   });
   const { token } = await signIn(muse);
   assert.ok(identityLog.some((e) => e.stage === "token" && e.clientId === muse.clientId && !e.reason));
+  // Every request from a verified Session is logged with the agent's Session
+  // ID and its ID for the person, so one Session can be followed.
   const before = identityLog.length;
   await api(muse, "/api/v1/items", { accessToken: token.body.access_token });
-  // A passing API check is not logged on every request, only failures are.
-  assert.equal(identityLog.length, before);
+  assert.equal(identityLog.length, before + 1);
+  const entry = identityLog.at(-1);
+  assert.equal(entry.stage, "api");
+  assert.equal(entry.clientId, muse.clientId);
+  assert.equal(entry.sid, "sid_1");
+  assert.equal(entry.user, "usr_1");
+  assert.equal(entry.request, "GET /api/v1/items");
+  assert.equal(entry.reason, undefined);
+  // The sign-in it used remembers the Session, written once, not per request.
+  const grant = await store.getGrant(entry.grantId);
+  assert.equal(grant.last_session_id, "sid_1");
+  assert.equal(grant.last_session_user, "usr_1");
+  const at = grant.last_session_at;
+  clock.advance(5);
+  await api(muse, "/api/v1/items", { accessToken: token.body.access_token });
+  assert.equal(identityLog.length, before + 2);
+  assert.equal((await store.getGrant(entry.grantId)).last_session_at, at);
 });
 
 test("unenforced, an agent that cannot identify itself is logged and let through", async () => {

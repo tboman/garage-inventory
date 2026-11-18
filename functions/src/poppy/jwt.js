@@ -50,20 +50,31 @@ function peekIssuer(token) {
   }
 }
 
-function createJwtVerifier({ clients, now = Date.now }) {
-  const seenJti = new Map();
+// A replay record kept in this process only. Enough for tests and local runs;
+// production passes a shared one (store.js createUsedIdStore), because a
+// function runs on several instances and a replay could land on any of them.
+function memoryUsedIds() {
+  const seen = new Map();
+  return {
+    // Resolves true the first time `key` is used before `expiresAtMs`, and
+    // false for every later use while it is still live.
+    async claim(key, expiresAtMs, nowMs) {
+      if (seen.size > 5000) {
+        for (const [k, exp] of seen) if (exp < nowMs) seen.delete(k);
+      }
+      if (seen.has(key) && seen.get(key) >= nowMs) return false;
+      seen.set(key, expiresAtMs);
+      return true;
+    },
+  };
+}
 
-  // Per-instance replay cache. The spec makes rejecting a reused jti optional;
-  // this stops a replay at the same server without needing shared storage.
-  function useJti(key, expiresAtS) {
-    const nowS = Math.floor(now() / 1000);
-    if (seenJti.size > 5000) {
-      for (const [k, exp] of seenJti) if (exp < nowS) seenJti.delete(k);
-    }
-    if (seenJti.has(key) && seenJti.get(key) >= nowS) return false;
-    seenJti.set(key, expiresAtS);
-    return true;
-  }
+// `issuer` and `origin` are the Company's, hunapuka.com unless a site passes
+// its own: an agent's JWTs are bound to one Company and are refused by others.
+// `usedIds` records each jti once, so a captured JWT cannot be replayed.
+function createJwtVerifier({ clients, now = Date.now, issuer = ISSUER, origin = ORIGIN, usedIds = memoryUsedIds() }) {
+  // Keys name the Company too, so two sites can share one record.
+  const useJti = (key, expiresAtS) => usedIds.claim(`${issuer}|${key}`, expiresAtS * 1000, now());
 
   // Returns the verified client. `clientIdParam` is the optional client_id
   // form field, which must agree with the assertion when present.
@@ -87,7 +98,7 @@ function createJwtVerifier({ clients, now = Date.now }) {
     });
     // Exactly the issuer, as one string. An endpoint URL or an array could
     // name another Company that would also accept the assertion (spec 4.1).
-    if (payload.aud !== ISSUER) throw new JwtError("aud must be the issuer.");
+    if (payload.aud !== issuer) throw new JwtError("aud must be the issuer.");
     const nowS = Math.floor(now() / 1000);
     if (typeof payload.exp !== "number" || typeof payload.iat !== "number") {
       throw new JwtError("exp and iat are required.");
@@ -99,7 +110,7 @@ function createJwtVerifier({ clients, now = Date.now }) {
     // usable for as long as its signer liked.
     if (payload.iat - nowS > ASSERTION_SKEW_S) throw new JwtError("Assertion iat is in the future.");
     if (typeof payload.jti !== "string" || !payload.jti) throw new JwtError("jti is required.");
-    if (!useJti(`a:${clientId}:${payload.jti}`, payload.exp + ASSERTION_SKEW_S)) {
+    if (!(await useJti(`a:${clientId}:${payload.jti}`, payload.exp + ASSERTION_SKEW_S))) {
       throw new JwtError("Assertion was already used.");
     }
     return client;
@@ -162,7 +173,7 @@ function createJwtVerifier({ clients, now = Date.now }) {
     });
 
     // 4. Bound to this Company, this request, and this moment.
-    if (session.aud !== ISSUER) throw new JwtError("aud must be the Company's identifier.");
+    if (session.aud !== issuer) throw new JwtError("aud must be the Company's identifier.");
     if (session.htm !== method) throw new JwtError("htm does not match the request.");
     let htu;
     try {
@@ -170,7 +181,7 @@ function createJwtVerifier({ clients, now = Date.now }) {
     } catch {
       throw new JwtError("htu is not a URL.");
     }
-    if (htu.origin !== ORIGIN || htu.pathname !== path) {
+    if (htu.origin !== origin || htu.pathname !== path) {
       throw new JwtError("htu does not match the request.");
     }
     const nowS = Math.floor(now() / 1000);
@@ -193,7 +204,7 @@ function createJwtVerifier({ clients, now = Date.now }) {
     } else if (session.ath !== undefined) {
       throw new JwtError("ath without an access token.");
     }
-    if (!useJti(`s:${clientId}:${session.jti}`, session.iat + 2 * SESSION_WINDOW_S)) {
+    if (!(await useJti(`s:${clientId}:${session.jti}`, session.iat + 2 * SESSION_WINDOW_S))) {
       throw new JwtError("Session JWT was already used.");
     }
     return { clientId, sid: session.sid, userId: session.sub };
@@ -202,4 +213,4 @@ function createJwtVerifier({ clients, now = Date.now }) {
   return { verifyClientAssertion, verifySession };
 }
 
-module.exports = { JwtError, createJwtVerifier, sha256url, peekIssuer };
+module.exports = { JwtError, createJwtVerifier, memoryUsedIds, sha256url, peekIssuer };

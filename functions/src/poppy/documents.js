@@ -56,9 +56,11 @@ function poppyJson(version = PROTOCOL_VERSION) {
   };
 }
 
-function protectedResourceMetadata() {
+// `resource` is the identifier the metadata was asked for under: the site by
+// default, or the API URL a client built the metadata address from.
+function protectedResourceMetadata(resource = ORIGIN) {
   return {
-    resource: ORIGIN,
+    resource,
     authorization_servers: [ISSUER],
     scopes_supported: scopeNames,
     bearer_methods_supported: ["header"],

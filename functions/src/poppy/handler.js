@@ -151,6 +151,30 @@ function shapeItems(raw) {
   }));
 }
 
+// The protected resource is the whole site, https://hunapuka.com. An agent may
+// also name it by the API's URL, or any URL under it, because RFC 9728 lets a
+// client build the metadata address from the URL it calls (see
+// resourceMetadataFor). Every one of these names the same resource.
+const API_URL = `${ORIGIN}${PATHS.api}`;
+function knownResource(value) {
+  return value === ORIGIN || value === API_URL || (typeof value === "string" && value.startsWith(`${API_URL}/`));
+}
+
+// The protected resource metadata asked for at
+// /.well-known/oauth-protected-resource followed by `suffix` (RFC 9728 3.1).
+// A client that builds the address from the URL it calls, such as
+// https://hunapuka.com/api/v1/items, asks with that URL's path as the suffix,
+// and must find exactly that URL as `resource` in the answer (RFC 9728 3.3).
+// Null for a suffix outside the API, which names nothing here.
+function resourceMetadataFor(suffix) {
+  if (!suffix) return documents.protectedResourceMetadata();
+  const resource = `${ORIGIN}${suffix}`;
+  // API paths use only these characters (ids are [A-Za-z0-9_-]).
+  return /^\/[A-Za-z0-9._~\/-]*$/.test(suffix) && knownResource(resource)
+    ? documents.protectedResourceMetadata(resource)
+    : null;
+}
+
 // Where an unverified agent may send the person back to: any HTTPS address,
 // or a loopback one for an app on their own computer. With no client metadata
 // there is no registered list to match against, so the consent page shows the
@@ -169,12 +193,19 @@ function unregisteredRedirect(value) {
 
 // One structured line per identity check, so Cloud Logging can filter on it.
 // client_id and the reason are not secrets; tokens and JWTs never go in here.
-function defaultLogIdentity({ stage, clientId, reason }) {
+// `sid` and `user` are the agent's Session ID and its own ID for the person
+// (the Session JWT's `sid` and `sub`), present once a Session header has been
+// verified. They are opaque to us, and logged so one agent Session can be
+// followed across requests. `grantId` names the sign-in a request used.
+function defaultLogIdentity({ stage, clientId, reason, sid, user, grantId, request }) {
   const entry = {
     severity: reason ? "WARNING" : "INFO",
     message: reason ? "poppy agent identity check failed" : "poppy agent identity check passed",
     stage,
     client_id: typeof clientId === "string" ? clientId.slice(0, 300) : null,
+    ...(sid ? { sid, user } : {}),
+    ...(grantId ? { grant_id: grantId } : {}),
+    ...(request ? { request } : {}),
     ...(reason ? { reason } : {}),
   };
   console.log(JSON.stringify(entry));
@@ -277,7 +308,7 @@ function createPoppyHandler({
       return refuse("invalid_request", "PKCE with code_challenge_method S256 is required.");
     }
     const resource = str("resource");
-    if (resource !== undefined && resource !== ORIGIN) {
+    if (resource !== undefined && !knownResource(resource)) {
       return refuse("invalid_target", "Unknown resource.");
     }
     return { client, verified, redirectUri, scopes, challenge, back };
@@ -476,7 +507,7 @@ function createPoppyHandler({
     if (client.unverified && isApproved(client.client_id)) {
       return oauthError(res, 401, "invalid_client", "This client_id must send a valid client assertion.");
     }
-    if (body.resource !== undefined && body.resource !== ORIGIN) {
+    if (body.resource !== undefined && !knownResource(body.resource)) {
       return oauthError(res, 400, "invalid_target", "Unknown resource.");
     }
     const scopes = [...new Set(parseScope(body.scope))];
@@ -672,7 +703,7 @@ function createPoppyHandler({
     const client = await authenticateClient(req, res);
     if (!client) return;
     const body = req.body;
-    if (body.resource !== undefined && body.resource !== ORIGIN) {
+    if (body.resource !== undefined && !knownResource(body.resource)) {
       return oauthError(res, 400, "invalid_target", "Unknown resource.");
     }
     if (body.grant_type === "authorization_code") return exchangeCode(body, client, res);
@@ -773,11 +804,13 @@ function createPoppyHandler({
 
     const challenge = (status, params) =>
       send(res, status, undefined, { "WWW-Authenticate": `Bearer ${params}` });
+    const request = `${req.method} ${req.path}`;
     if (!accessToken && tokenOptional) {
       if (session && shutOut(session.clientId)) {
         invalidSession(NOT_APPROVED);
         return null;
       }
+      if (session) logIdentity({ stage: "api", clientId: session.clientId, sid: session.sid, user: session.userId, request });
       return { record: null, session };
     }
     if (!accessToken) {
@@ -804,6 +837,27 @@ function createPoppyHandler({
     if (!parseScope(record.scope).includes(scope)) {
       challenge(403, `error="insufficient_scope", scope="${scope}"`);
       return null;
+    }
+    if (session) {
+      // Every request from a verified Session is logged with its Session ID,
+      // and the sign-in it used remembers the latest one. The token remembers
+      // it too, so the sign-in is written only when the Session changes.
+      logIdentity({
+        stage: "api",
+        clientId: session.clientId,
+        sid: session.sid,
+        user: session.userId,
+        grantId: record.grant_id,
+        request,
+      });
+      if (record.session_id !== session.sid) {
+        await store.updateAccessToken(hashToken(accessToken), { session_id: session.sid });
+        await store.updateGrant(record.grant_id, {
+          last_session_id: session.sid,
+          last_session_user: session.userId,
+          last_session_at: now(),
+        });
+      }
     }
     return { record, session };
   }
@@ -1011,6 +1065,11 @@ function createPoppyHandler({
       if (item && req.method === "GET") return await handleItems(req, res, item[1]);
       if (item && req.method === "PATCH") return await handleUpdateItem(req, res, item[1]);
       if (item && req.method === "DELETE") return await handleDeleteItem(req, res, item[1]);
+      const metadata = /^\/\.well-known\/oauth-protected-resource(\/.*)$/.exec(req.path);
+      if (metadata && req.method === "GET") {
+        const doc = resourceMetadataFor(metadata[1]);
+        return doc ? send(res, 200, doc, cached) : oauthError(res, 404, "not_found", "No such resource.");
+      }
       const viewed = new RegExp(`^${PATHS.browse}/items/([A-Za-z0-9_-]{1,64})$`).exec(req.path);
       if (viewed && req.method === "GET") return await web.browse(req, res, viewed[1]);
       oauthError(res, 404, "not_found", "No such endpoint.");
@@ -1022,4 +1081,13 @@ function createPoppyHandler({
   };
 }
 
-module.exports = { createPoppyHandler, shapeItems, hashToken };
+module.exports = {
+  createPoppyHandler,
+  shapeItems,
+  hashToken,
+  newToken,
+  send,
+  oauthError,
+  versionServed,
+  defaultLogIdentity,
+};

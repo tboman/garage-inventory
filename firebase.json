@@ -7,6 +7,7 @@
       "rewrites": [
         { "source": "/.well-known/poppy.json", "function": { "functionId": "poppy", "region": "us-central1" } },
         { "source": "/.well-known/oauth-protected-resource", "function": { "functionId": "poppy", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-protected-resource/**", "function": { "functionId": "poppy", "region": "us-central1" } },
         { "source": "/.well-known/oauth-authorization-server", "function": { "functionId": "poppy", "region": "us-central1" } },
         { "source": "/oauth/request", "function": { "functionId": "poppy", "region": "us-central1" } },
         { "source": "/oauth/decision", "function": { "functionId": "poppy", "region": "us-central1" } },
@@ -57,7 +58,17 @@
       "target": "storageloot",
       "public": "apps/storageloot/build",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "rewrites": [
+        { "source": "/.well-known/poppy.json", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-authorization-server", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-protected-resource", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/.well-known/oauth-protected-resource/**", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/poppy/browser-session", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/poppy/browser-session/authorize", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/browse", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "/browse/**", "function": { "functionId": "poppyStorageloot", "region": "us-central1" } },
+        { "source": "**", "destination": "/index.html" }
+      ],
       "headers": [
         {
           "source": "/index.html",
