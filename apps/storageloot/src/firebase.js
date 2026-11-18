@@ -16,9 +16,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+// Plain sign-in asks only for basic profile, so buyers never see Google's
+// "unverified app" warning. Drive and Photos access is requested separately,
+// only when a seller imports photos (see googleToken.js).
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-googleProvider.addScope('https://www.googleapis.com/auth/photospicker.mediaitems.readonly');
+export const googleMediaProvider = new GoogleAuthProvider();
+googleMediaProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleMediaProvider.addScope('https://www.googleapis.com/auth/photospicker.mediaitems.readonly');
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);

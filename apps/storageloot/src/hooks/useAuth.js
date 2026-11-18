@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
-import { storeGoogleToken, clearGoogleToken } from '../googleToken';
+import { clearGoogleToken } from '../googleToken';
 
 const AuthContext = createContext(null);
 
@@ -18,10 +18,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    storeGoogleToken(credential);
-    return result;
+    return signInWithPopup(auth, googleProvider);
   };
   const logout = async () => {
     clearGoogleToken();

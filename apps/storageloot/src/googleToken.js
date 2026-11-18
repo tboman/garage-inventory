@@ -1,5 +1,5 @@
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, googleProvider } from './firebase';
+import { signInWithPopup, reauthenticateWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth, googleMediaProvider } from './firebase';
 
 const TOKEN_KEY = 'google_access_token';
 const EXPIRY_KEY = 'google_token_expiry';
@@ -24,7 +24,11 @@ export async function getGoogleAccessToken() {
     return token;
   }
 
-  const result = await signInWithPopup(auth, googleProvider);
+  // Ask for Drive/Photos access on top of the existing sign-in. Reauthenticating
+  // keeps the person on the same account instead of letting them switch.
+  const result = auth.currentUser
+    ? await reauthenticateWithPopup(auth.currentUser, googleMediaProvider)
+    : await signInWithPopup(auth, googleMediaProvider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   storeGoogleToken(credential);
   return credential?.accessToken || null;
