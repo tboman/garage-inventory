@@ -2,24 +2,31 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // StorageLoot guests (Firebase custom-token sign-ins, see firestore.rules)
+    // only write to sellers; uploading photos needs a Google account.
+    function member() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != "custom";
+    }
+
     match /listings/{listingId}/{photo} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if member();
     }
 
     match /groups/{groupId}/{photo} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if member();
     }
 
     match /nursery_listings/{listingId}/{photo} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if member();
     }
 
     match /nursery_groups/{groupId}/{photo} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if member();
     }
   }
 }

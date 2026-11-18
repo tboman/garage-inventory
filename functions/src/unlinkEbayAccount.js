@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) admin.initializeApp();
@@ -7,6 +8,7 @@ exports.unlinkEbayAccount = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
   }
+  refuseGuests(request.auth);
 
   const db = admin.firestore();
   const uid = request.auth.uid;

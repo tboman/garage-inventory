@@ -5,9 +5,15 @@ import { startEbayLogin } from '../ebayAuth';
 import { useConversations } from '../hooks/useConversations';
 
 export default function Navbar() {
-  const { user, login, logout } = useAuth();
+  const { user, guest, me, login, logout } = useAuth();
   const { integration: ebay, unlink: unlinkEbay } = useEbayIntegration();
-  const { unread } = useConversations(user);
+  const { unread } = useConversations(me);
+  const messagesLink = (
+    <Link className="nav-link px-2" to="/messages">
+      Messages
+      {unread > 0 && <span className="badge bg-danger ms-1" aria-label={`${unread} unread`}>{unread}</span>}
+    </Link>
+  );
 
   return (
     <nav className="navbar navbar-expand-md sl-navbar navbar-dark">
@@ -23,10 +29,7 @@ export default function Navbar() {
                 <span className="text-light small d-none d-md-inline">
                   {user.displayName || user.email}
                 </span>
-                <Link className="nav-link px-2" to="/messages">
-                  Messages
-                  {unread > 0 && <span className="badge bg-danger ms-1" aria-label={`${unread} unread`}>{unread}</span>}
-                </Link>
+                {messagesLink}
                 <Link className="nav-link px-2" to="/my-groups">My Groups</Link>
                 <Link className="nav-link px-2" to="/my-listings">My Listings</Link>
                 {ebay && <Link className="nav-link px-2" to="/my-ebay">My eBay</Link>}
@@ -51,9 +54,17 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              <button className="btn btn-outline-light btn-sm" onClick={login}>
-                Sign in with Google
-              </button>
+              <>
+                {guest && (
+                  <>
+                    <span className="badge bg-light text-dark" title="Writing to sellers without an account">Guest</span>
+                    {messagesLink}
+                  </>
+                )}
+                <button className="btn btn-outline-light btn-sm" onClick={login}>
+                  Sign in with Google
+                </button>
+              </>
             )}
           </div>
         </div>

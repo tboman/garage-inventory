@@ -53,7 +53,8 @@ function MessageBody({ message, isSeller, conversation, onRespond, responding })
 
 export default function ConversationPage() {
   const { id } = useParams();
-  const { user, login, loading: authLoading } = useAuth();
+  // Google accounts and guests alike.
+  const { me: user, login, loading: authLoading } = useAuth();
   const [conversation, setConversation] = useState(undefined);
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
@@ -145,7 +146,17 @@ export default function ConversationPage() {
           <h4 className="fw-bold mb-0">
             <Link to={`/listing/${conversation.listingId}`} className="text-reset">{conversation.listingTitle}</Link>
           </h4>
-          <div className="text-muted small">{isSeller ? `Buyer: ${other}` : `Seller: ${other}`}</div>
+          <div className="text-muted small">
+            {isSeller ? `Buyer: ${other}` : `Seller: ${other}`}
+            {isSeller && conversation.buyerGuest && (
+              <span
+                className="badge bg-secondary ms-2"
+                title="Wrote without signing in. They see your replies in the browser, or through the agent, they wrote from."
+              >
+                Guest
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

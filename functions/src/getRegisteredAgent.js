@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const admin = require("firebase-admin");
 const { fetchCimd, isCimdClientId } = require("./cimd");
 const { personaForHost } = require("./personas");
@@ -18,6 +19,7 @@ exports.getRegisteredAgent = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
   }
+  refuseGuests(request.auth);
   const clientId = request.data?.client_id;
   const mcpHost = request.data?.mcp_host;
   if (typeof clientId !== "string" || !clientId) {

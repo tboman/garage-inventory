@@ -55,6 +55,10 @@ function getStorageLootHandler() {
         usedIds: getUsedIds(),
       }),
       verifyIdToken: (token) => admin.auth().verifyIdToken(token),
+      // Browser guests sign in to Firebase with these. Signing needs the
+      // function's service account to hold Service Account Token Creator on
+      // itself.
+      mintCustomToken: (uid, claims) => admin.auth().createCustomToken(uid, claims),
     });
   }
   return storageLootHandler;

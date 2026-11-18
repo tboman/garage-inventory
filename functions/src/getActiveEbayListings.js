@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const { XMLParser } = require("fast-xml-parser");
 const { getValidEbayAccessToken, EbayAuthError } = require("./ebayTokens");
 
@@ -69,6 +70,7 @@ exports.getActiveEbayListings = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
   }
+  refuseGuests(request.auth);
 
   const uid = request.auth.uid;
   const pageNumber = Math.max(1, Math.floor(Number(request.data?.pageNumber) || 1));

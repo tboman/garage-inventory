@@ -28,7 +28,9 @@ function poppyJson() {
           "a verified Session header alone. With the person's approval: read their " +
           "conversations with buyers and sellers (messages:read), and ask a seller about " +
           "an item, make an offer, ask them to list it on eBay or Craigslist, or reply " +
-          "(messages:send). Accepting or declining offers is left to the person.",
+          "(messages:send). Without signing in, the same message endpoints act for a " +
+          "guest account kept for the person behind your Session (your client_id and " +
+          "its user). Accepting or declining offers is left to the person.",
       },
     ],
     // Anonymous, read-only pages of active listings for the agent's browser.
@@ -71,10 +73,15 @@ const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
 const idParam = (name, description) => ({ name, in: "path", required: true, schema: { type: "string" }, description });
 
 function openApi() {
-  const read = [{ storageloot: ["messages:read"] }];
-  const sendScope = [{ storageloot: ["messages:send"] }];
+  // `{}`: or no access token at all, acting for the agent's guest.
+  const read = [{ storageloot: ["messages:read"] }, {}];
+  const sendScope = [{ storageloot: ["messages:send"] }, {}];
   const errors = {
-    400: { description: "The Poppy-Session or Poppy-Version header is missing or invalid." },
+    400: {
+      description:
+        "The Poppy-Session or Poppy-Version header is missing or invalid, or (with no access " +
+        "token) the agent is not approved for guests.",
+    },
     401: { description: "No access token, or it is expired or revoked. See WWW-Authenticate." },
     403: { description: "The access token lacks the scope this operation needs." },
   };
@@ -155,6 +162,11 @@ function openApi() {
         "with buyers and sellers. Each conversation is about one listing, between its " +
         "seller and one buyer. Listings need only a verified Poppy-Session header; " +
         "conversations need an access token with messages:read or messages:send. " +
+        "Called with no Authorization header, the conversation endpoints act for a guest: " +
+        "an account StorageLoot keeps for the person your verified Session names (your " +
+        "client_id and the Session's user), made by its first message to a seller. A guest " +
+        "has only the conversations it started, and the seller sees that it is a guest. " +
+        "Guests are open to approved agents only. " +
         "Messages an agent sends are shown to the other side as sent by an agent. " +
         "Agents cannot accept or decline offers. Amounts are in cents.",
     },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { auth } from '../firebase';
 
 // The parts the two agent sign-in pages share: AgentAuthorizePage, which an
@@ -19,6 +19,8 @@ export const AgentShell = ({ children }) => (
 // show when sign-in failed, or null.
 export async function signInToDecide() {
   try {
+    // A guest signs in in memory only (guestApi.js); a Google account is kept.
+    await setPersistence(auth, browserLocalPersistence);
     await signInWithPopup(auth, new GoogleAuthProvider());
     return null;
   } catch (err) {

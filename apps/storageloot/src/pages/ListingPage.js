@@ -22,7 +22,7 @@ function formatPrice(cents) {
 
 export default function ListingPage() {
   const { id } = useParams();
-  const { user, login } = useAuth();
+  const { user, me, login, startGuest } = useAuth();
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
@@ -184,7 +184,7 @@ export default function ListingPage() {
           )}
 
           {!isOwner && listing.status === 'active' && (
-            <ContactSeller listing={listing} user={user} login={login} />
+            <ContactSeller listing={listing} user={me} login={login} startGuest={startGuest} />
           )}
 
           {isOwner && <MarketplacesPanel listingId={listing.id} />}

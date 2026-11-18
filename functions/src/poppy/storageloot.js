@@ -15,20 +15,31 @@
 //   the API     /api/v1: listings (Session header only), and the person's
 //               conversations with buyers and sellers (messages:read,
 //               messages:send). Agents cannot accept or decline offers.
+//   guests      people write to sellers without signing in. A browser guest
+//               (`sla_…`) is made by POST /api/guest/session when the person
+//               first sends a message; its token rides in the __session
+//               cookie and is traded for a Firebase custom token, so the web
+//               app keeps writing through Firestore under its rules. An agent
+//               guest (`slg_…`) is the person behind a verified Session: the
+//               message and conversation endpoints, called with no
+//               Authorization header, act for the account derived from the
+//               Session's client_id and user.
 //
-// The anonymous join is not open to anyone: the Session header must verify
-// against storageloot.shop and come from an approved agent, whatever
-// ENFORCE_AGENT_IDENTITY says. With no access token behind it, the Session is
-// the only thing the join could be tied to.
+// The anonymous join and agent guests are not open to anyone: the Session
+// header must verify against storageloot.shop and come from an approved
+// agent, whatever ENFORCE_AGENT_IDENTITY says. With no access token behind
+// it, the Session is the only thing they could be tied to.
 
+const { createHash, randomBytes } = require("node:crypto");
 const {
   STORAGELOOT,
   PATHS,
   ENFORCE_AGENT_IDENTITY,
   APPROVED_CLIENTS,
   APPROVED_CLIENTS_ONLY,
+  GUEST_SESSION_TTL_MS,
 } = require("./config");
-const { createBrowserJoin, sendHtml, document, esc, csp } = require("./join");
+const { createBrowserJoin, sendHtml, document, esc, csp, readCookie, writeCookie } = require("./join");
 const { JwtError, peekIssuer } = require("./jwt");
 const { ClientError } = require("./clientMetadata");
 const {
@@ -44,10 +55,34 @@ const {
 const documents = require("./storagelootDocuments");
 const { MessageError, validateMessage, previewOf, conversationId } = require("../messages");
 
-const { ORIGIN, NAME, DOMAIN, IMAGE_HOSTS, SCOPES, AGENT_MESSAGES_PER_HOUR } = STORAGELOOT;
+const { ORIGIN, NAME, DOMAIN, IMAGE_HOSTS, SCOPES, AGENT_MESSAGES_PER_HOUR, GUEST } = STORAGELOOT;
 const READ = "messages:read";
 const SEND = "messages:send";
 const HOUR_MS = 60 * 60 * 1000;
+const GUEST_PATH = "/api/guest";
+
+// Guest account ids. Firebase uids for Google accounts are 28 letters and
+// digits, so the underscore keeps these from ever naming a real person.
+// A browser guest's is random. An agent guest's is derived from the agent and
+// its own id for the person, so the same pair always finds the same account,
+// and another agent naming the same user gets a different one.
+const newBrowserGuestId = () => `sla_${randomBytes(16).toString("base64url")}`;
+const agentGuestId = (clientId, user) =>
+  `slg_${createHash("sha256").update(`${clientId}\n${user}`).digest("base64url").slice(0, 32)}`;
+// The Firebase custom token's extra claim, so rules and logs can tell guests apart.
+const GUEST_CLAIMS = { sl_guest: true };
+
+const defaultGuestOrigins = () =>
+  GUEST.ORIGINS.concat(process.env.FUNCTIONS_EMULATOR === "true" ? GUEST.EMULATOR_ORIGINS : []);
+
+// The caller's IP address, for counting new guests. Best effort: Hosting puts
+// the client's address in Fastly-Client-IP, and X-Forwarded-For first.
+function clientIp(req) {
+  const fastly = req.get("fastly-client-ip");
+  if (fastly) return fastly.trim();
+  const forwarded = String(req.get("x-forwarded-for") || "").split(",")[0].trim();
+  return forwarded || req.ip || "unknown";
+}
 
 const CONDITIONS = { new: "New", like_new: "Like New", good: "Good", fair: "Fair", poor: "Poor" };
 const CATEGORIES = {
@@ -121,6 +156,9 @@ function createStorageLootHandler({
   approvedClients = APPROVED_CLIENTS,
   approvedOnly = APPROVED_CLIENTS_ONLY,
   logIdentity = defaultLogIdentity,
+  // (uid, claims) => a Firebase custom token, for browser guests.
+  mintCustomToken,
+  guestOrigins = defaultGuestOrigins(),
 }) {
   const auth = createAgentAuth({
     site: SITE,
@@ -278,6 +316,108 @@ function createStorageLootHandler({
       : `${listings.length} active listing${listings.length === 1 ? "" : "s"}`;
     return page(res, 200, q || category ? "Search" : "Listings", `<h1>${heading}</h1>${filters(q, category)}${list(listings)}${footer}`);
   }
+  // ---- Browser guests -----------------------------------------------------
+
+  // Only the site's own pages may trade the cookie for a sign-in. The cookie
+  // is SameSite=Strict as well; this also turns away a page elsewhere that
+  // gets a browser to post here.
+  function fromOurPages(req, res) {
+    if (guestOrigins.includes(req.get("origin"))) return true;
+    oauthError(res, 403, "forbidden", `Only ${DOMAIN}'s own pages may do this.`);
+    return false;
+  }
+
+  // POST /api/guest/session {create}. With a live guest in the cookie, signs
+  // it in again (and keeps it another year). Otherwise, with create: true,
+  // starts a new guest; with create: false, answers 204 and makes nothing.
+  // A sign-in is { account_id, token }, the token a Firebase custom token.
+  async function handleGuestSession(req, res) {
+    if (!fromOurPages(req, res)) return;
+    const cookie = readCookie(req);
+    const at = now();
+    let token = cookie.a;
+    let session = token ? await store.getGuestSession(hashToken(token)) : null;
+    if (session && !(session.expires_at >= at)) session = null;
+
+    if (session) {
+      await store.updateGuestSession(hashToken(token), { expires_at: at + GUEST_SESSION_TTL_MS });
+      await store.updateAccount(session.account_id, { last_seen_at: at });
+    } else {
+      const forget = cookie.a ? { "Set-Cookie": writeCookie({ ...cookie, a: undefined }) } : {};
+      if (body(req).create !== true) return send(res, 204, undefined, forget);
+      const ipHash = hashToken(`guest-ip\n${clientIp(req)}`);
+      if (!(await store.takeNewGuestAllowance(ipHash, at, GUEST.NEW_PER_IP_PER_HOUR, HOUR_MS))) {
+        return oauthError(res, 429, "rate_limited", "Too many new guests from this network. Try again later.", forget);
+      }
+      const accountId = newBrowserGuestId();
+      await store.ensureAccount(accountId, { kind: "guest", created_at: at, last_seen_at: at });
+      token = newToken("sls");
+      session = { account_id: accountId, created_at: at, expires_at: at + GUEST_SESSION_TTL_MS };
+      await store.putGuestSession(hashToken(token), session);
+    }
+    const firebaseToken = await mintCustomToken(session.account_id, GUEST_CLAIMS);
+    send(res, 200, { account_id: session.account_id, token: firebaseToken }, {
+      "Set-Cookie": writeCookie({ ...cookie, a: token }),
+    });
+  }
+
+  // POST /api/guest/sign-out. The guest's cookie session ends for good: there
+  // is no other way back into a browser guest's account.
+  async function handleGuestSignOut(req, res) {
+    if (!fromOurPages(req, res)) return;
+    const cookie = readCookie(req);
+    if (cookie.a) await store.deleteGuestSession(hashToken(cookie.a));
+    send(res, 204, undefined, { "Set-Cookie": writeCookie({ ...cookie, a: undefined }) });
+  }
+
+  // ---- Agent guests ------------------------------------------------------
+
+  // Who a request with no Authorization header acts for: the guest anchored
+  // to the agent's Session. The Session must verify and come from an approved
+  // agent, whatever ENFORCE_AGENT_IDENTITY says, and name the person (`sub`).
+  // Returns { uid, client_id, guest: true }, or null after answering.
+  async function agentGuest(req, res) {
+    const request = `${req.method} ${req.path}`;
+    const sessionJwt = req.get("poppy-session");
+    const refuse = (clientId, reason) => {
+      logIdentity({ stage: "api", clientId, reason, request });
+      oauthError(res, 400, "invalid_session", reason);
+      return null;
+    };
+    if (!sessionJwt) return refuse(null, "The Poppy-Session header is required.");
+    let session;
+    try {
+      session = await jwt.verifySession(sessionJwt, { method: req.method, path: req.path, accessToken: null });
+    } catch (err) {
+      if (!(err instanceof JwtError || err instanceof ClientError)) throw err;
+      return refuse(peekIssuer(sessionJwt), err.message);
+    }
+    if (!approvedClients.includes(session.clientId)) {
+      return refuse(session.clientId, "This client_id is not on the list of approved agents.");
+    }
+    if (typeof session.userId !== "string" || !session.userId) {
+      return refuse(session.clientId, "The Session JWT names no user (sub) to keep a guest account for.");
+    }
+    if (!versionServed(req.get("poppy-version"))) {
+      send(res, 400, { error: "version_unsupported" });
+      return null;
+    }
+    const uid = agentGuestId(session.clientId, session.userId);
+    logIdentity({ stage: "api", clientId: session.clientId, sid: session.sid, user: session.userId, guest: uid, request });
+    return { uid, client_id: session.clientId, grant_id: null, guest: true };
+  }
+
+  // How a guest's agent is named to the seller.
+  async function guestName(clientId) {
+    try {
+      const client = await clients.getClient(clientId);
+      const name = client && (client.client_name || client.host);
+      return `Guest via ${String(name || "agent")}`.slice(0, 100);
+    } catch {
+      return "Guest via agent";
+    }
+  }
+
   // ---- The API ------------------------------------------------------------
 
   const listingUrlFor = (id) => `${ORIGIN}/listing/${encodeURIComponent(id)}`;
@@ -356,8 +496,11 @@ function createStorageLootHandler({
     send(res, 200, { listings: listings.map(shapeListing), total: listings.length });
   }
 
-  // Returns the access token record, or null after answering the request.
-  async function signedIn(req, res, scope) {
+  // Who the request acts for: with an access token, the person who signed in
+  // (the token's record: uid, client_id, grant_id), if it carries `scope`;
+  // with no Authorization header, the agent guest. Null after answering.
+  async function actor(req, res, scope) {
+    if (!req.get("authorization")) return agentGuest(req, res);
     const checked = await auth.checkAgent(req, res, scope);
     return checked && checked.record;
   }
@@ -373,7 +516,7 @@ function createStorageLootHandler({
   }
 
   async function handleConversations(req, res, id) {
-    const record = await signedIn(req, res, READ);
+    const record = await actor(req, res, READ);
     if (!record) return;
     if (id === undefined) {
       const list = await store.listConversations(record.uid);
@@ -388,9 +531,13 @@ function createStorageLootHandler({
   const invalid = (res, description) => oauthError(res, 422, "invalid_request", description);
   const body = (req) => (req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {});
 
-  // Counts the message against the agent's hourly allowance; answers 429 when spent.
+  // Counts the message against the agent's hourly allowance (on its sign-in,
+  // or for a guest on the guest's account); answers 429 when spent.
   async function allowance(res, record) {
-    if (await store.takeMessageAllowance(record.grant_id, now(), AGENT_MESSAGES_PER_HOUR, HOUR_MS)) return true;
+    const taken = record.guest
+      ? await store.takeGuestAllowance(record.uid, now(), AGENT_MESSAGES_PER_HOUR, HOUR_MS)
+      : await store.takeMessageAllowance(record.grant_id, now(), AGENT_MESSAGES_PER_HOUR, HOUR_MS);
+    if (taken) return true;
     oauthError(res, 429, "rate_limited", `An agent may send ${AGENT_MESSAGES_PER_HOUR} messages an hour. Try again later.`);
     return false;
   }
@@ -406,9 +553,10 @@ function createStorageLootHandler({
     };
   }
 
-  // The person, as a buyer, writes to a listing's seller.
+  // The person, as a buyer, writes to a listing's seller. An agent guest's
+  // account is made here, by its first message.
   async function handleMessageSeller(req, res, listingId) {
-    const record = await signedIn(req, res, SEND);
+    const record = await actor(req, res, SEND);
     if (!record) return;
     const listing = LISTING_ID.test(listingId) ? await store.getListing(listingId) : null;
     if (!isPublic(listing)) return oauthError(res, 404, "not_found", "No active listing with that id.");
@@ -431,13 +579,18 @@ function createStorageLootHandler({
       throw err;
     }
     if (fields.kind === "reply") return invalid(res, "kind must be inquiry, offer, or listing_request.");
+    if (record.guest) {
+      await store.ensureAccount(record.uid, { kind: "agent", client_id: record.client_id, created_at: now(), last_seen_at: now() });
+    }
     if (!(await allowance(res, record))) return;
 
     const id = conversationId(listing.id, record.uid);
     const message = messageFrom(record, "buyer", fields);
     const preview = previewOf(message);
     const at = now();
-    const buyerName = ((await store.getUserName(record.uid)) || "Buyer").slice(0, 100);
+    const buyerName = record.guest
+      ? await guestName(record.client_id)
+      : ((await store.getUserName(record.uid)) || "Buyer").slice(0, 100);
     const messageId = await store.postMessage(id, {
       create: {
         listingId: listing.id,
@@ -447,6 +600,7 @@ function createStorageLootHandler({
         sellerDisplayName: String(listing.sellerDisplayName || "Seller").slice(0, 100),
         buyerId: record.uid,
         buyerDisplayName: buyerName,
+        ...(record.guest ? { buyerGuest: true } : {}),
         participants: [listing.sellerId, record.uid],
         createdAt: at,
         lastMessageAt: at,
@@ -463,7 +617,7 @@ function createStorageLootHandler({
 
   // A reply from either side of one of the person's conversations.
   async function handleReply(req, res, id) {
-    const record = await signedIn(req, res, SEND);
+    const record = await actor(req, res, SEND);
     if (!record) return;
     const c = await theirConversation(res, record, id);
     if (!c) return;
@@ -508,6 +662,8 @@ function createStorageLootHandler({
     [`GET ${PATHS.browse}`]: (req, res) => browse(req, res),
     [`GET ${PATHS.api}/listings`]: (req, res) => handleListings(req, res),
     [`GET ${PATHS.api}/conversations`]: (req, res) => handleConversations(req, res),
+    [`POST ${GUEST_PATH}/session`]: handleGuestSession,
+    [`POST ${GUEST_PATH}/sign-out`]: handleGuestSignOut,
   };
 
   const match = (pattern, path) => new RegExp(pattern).exec(path);

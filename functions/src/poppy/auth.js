@@ -131,8 +131,9 @@ function unregisteredRedirect(value) {
 // `sid` and `user` are the agent's Session ID and its own ID for the person
 // (the Session JWT's `sid` and `sub`), present once a Session header has been
 // verified. They are opaque to us, and logged so one agent Session can be
-// followed across requests. `grantId` names the sign-in a request used.
-function defaultLogIdentity({ stage, clientId, reason, sid, user, grantId, request }) {
+// followed across requests. `grantId` names the sign-in a request used, and
+// `guest` the storageloot.shop guest account a tokenless request acts for.
+function defaultLogIdentity({ stage, clientId, reason, sid, user, grantId, guest, request }) {
   const entry = {
     severity: reason ? "WARNING" : "INFO",
     message: reason ? "poppy agent identity check failed" : "poppy agent identity check passed",
@@ -140,6 +141,7 @@ function defaultLogIdentity({ stage, clientId, reason, sid, user, grantId, reque
     client_id: typeof clientId === "string" ? clientId.slice(0, 300) : null,
     ...(sid ? { sid, user } : {}),
     ...(grantId ? { grant_id: grantId } : {}),
+    ...(guest ? { guest } : {}),
     ...(request ? { request } : {}),
     ...(reason ? { reason } : {}),
   };

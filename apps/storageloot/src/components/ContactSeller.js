@@ -17,12 +17,15 @@ function toCents(value) {
   return cents > 0 ? cents : null;
 }
 
-// The buyer's way to reach the seller from a listing page.
-export default function ContactSeller({ listing, user, login }) {
+// The buyer's way to reach the seller from a listing page. `user` is whoever
+// is signed in, a Google account or a guest. Nobody signed in can still send:
+// the first message makes them a guest (startGuest), kept by a cookie.
+export default function ContactSeller({ listing, user, login, startGuest }) {
   const [mode, setMode] = useState('inquiry');
   const [text, setText] = useState('');
   const [offer, setOffer] = useState('');
   const [platform, setPlatform] = useState(REQUEST_PLATFORMS[0]);
+  const [guestName, setGuestName] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [sentTo, setSentTo] = useState(null);
@@ -32,18 +35,6 @@ export default function ContactSeller({ listing, user, login }) {
     if (!user) return;
     getMyConversation(listing.id, user.uid).then(setExisting).catch(() => setExisting(null));
   }, [listing.id, user]);
-
-  if (!user) {
-    return (
-      <div className="border rounded p-3 mb-3">
-        <h6 className="fw-semibold mb-2">Interested?</h6>
-        <p className="small text-muted mb-2">
-          Sign in to ask the seller a question, make an offer, or ask them to list it on eBay or Craigslist.
-        </p>
-        <button className="btn btn-sl btn-sm" onClick={login}>Sign in to contact the seller</button>
-      </div>
-    );
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,7 +50,9 @@ export default function ContactSeller({ listing, user, login }) {
     if (mode === 'listing_request') draft.platform = platform;
     setSending(true);
     try {
-      const id = await sendToSeller(listing, user, draft);
+      const sender = user || (await startGuest());
+      if (!sender) throw new Error('Could not start a guest session. Try again, or sign in with Google.');
+      const id = await sendToSeller(listing, sender, draft, { guestName });
       setSentTo(id);
       setText('');
       setOffer('');
@@ -123,6 +116,17 @@ export default function ContactSeller({ listing, user, login }) {
             ))}
           </select>
         )}
+        {!user && (
+          <input
+            type="text"
+            className="form-control form-control-sm mb-2"
+            placeholder="Your name (optional)"
+            aria-label="Your name"
+            maxLength={100}
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+          />
+        )}
         <textarea
           className="form-control form-control-sm mb-2"
           rows={3}
@@ -137,6 +141,16 @@ export default function ContactSeller({ listing, user, login }) {
           {sending ? 'Sending...' : 'Send to seller'}
         </button>
       </form>
+      {!user && (
+        <p className="small text-muted mt-2 mb-0">
+          No account needed: you will write as a guest, and the seller&apos;s replies appear under Messages
+          in this browser. Or{' '}
+          <button type="button" className="btn btn-link btn-sm p-0 align-baseline" onClick={login}>
+            sign in with Google
+          </button>{' '}
+          to keep them with your account.
+        </p>
+      )}
     </div>
   );
 }

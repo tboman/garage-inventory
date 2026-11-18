@@ -289,6 +289,34 @@ const STORAGELOOT_AUTH = {
   device: "storageloot_poppy_device_codes",
   deviceMisses: "storageloot_poppy_device_attempts",
 };
+// Guests: accounts (browser and agent), the browser guests' cookie sessions
+// by token hash, and how many browser guests each IP address (by hash) has
+// started this hour.
+const STORAGELOOT_ACCOUNTS = "storageloot_accounts";
+const STORAGELOOT_GUEST_SESSIONS = "storageloot_guest_sessions";
+const STORAGELOOT_GUEST_IPS = "storageloot_guest_ip";
+
+// Counts one use against the hourly allowance kept on the document at `ref`.
+// Resolves to false, counting nothing, once `limit` uses fall in the window,
+// or if the document is missing and `create` is false. With `create`, a
+// missing document is started, and expires (for cleanup) when its window ends.
+function takeAllowance(db, ref, nowMs, limit, windowMs, create = false) {
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists && !create) return false;
+    const d = snap.exists ? snap.data() : {};
+    const fresh = !(d.message_window_start + windowMs > nowMs);
+    const count = fresh ? 0 : d.message_count || 0;
+    if (count >= limit) return false;
+    const start = fresh ? nowMs : d.message_window_start;
+    tx.set(
+      ref,
+      { message_window_start: start, message_count: count + 1, ...(create ? { expires_at: start + windowMs } : {}) },
+      { merge: true },
+    );
+    return true;
+  });
+}
 
 // Conversations and messages carry Firestore timestamps, which the web app
 // reads; the handler deals in milliseconds. These fields are converted both ways.
@@ -365,21 +393,52 @@ function createStorageLootStore() {
 
     // Counts one agent message against the grant's hourly allowance. Resolves
     // to false, counting nothing, once `limit` messages were sent in the window.
-    async takeMessageAllowance(grantId, nowMs, limit, windowMs) {
-      const ref = db.collection(STORAGELOOT_AUTH.grants).doc(grantId);
+    takeMessageAllowance: (grantId, nowMs, limit, windowMs) =>
+      takeAllowance(db, db.collection(STORAGELOOT_AUTH.grants).doc(grantId), nowMs, limit, windowMs),
+
+    // The same allowance for a guest, counted on its account.
+    takeGuestAllowance: (accountId, nowMs, limit, windowMs) =>
+      takeAllowance(db, db.collection(STORAGELOOT_ACCOUNTS).doc(accountId), nowMs, limit, windowMs),
+
+    // One more browser guest from this IP address (by hash) this hour.
+    takeNewGuestAllowance: (ipHash, nowMs, limit, windowMs) =>
+      takeAllowance(db, db.collection(STORAGELOOT_GUEST_IPS).doc(ipHash), nowMs, limit, windowMs, true),
+
+    async getAccount(id) {
+      const snap = await db.collection(STORAGELOOT_ACCOUNTS).doc(id).get();
+      return snap.exists ? snap.data() : null;
+    },
+
+    // Creates the account unless it exists, and resolves to it either way.
+    async ensureAccount(id, data) {
+      const ref = db.collection(STORAGELOOT_ACCOUNTS).doc(id);
       return db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
-        if (!snap.exists) return false;
-        const g = snap.data();
-        const fresh = !(g.message_window_start + windowMs > nowMs);
-        const count = fresh ? 0 : g.message_count || 0;
-        if (count >= limit) return false;
-        tx.update(ref, {
-          message_window_start: fresh ? nowMs : g.message_window_start,
-          message_count: count + 1,
-        });
-        return true;
+        if (snap.exists) return snap.data();
+        tx.set(ref, data);
+        return data;
       });
+    },
+
+    async updateAccount(id, patch) {
+      await db.collection(STORAGELOOT_ACCOUNTS).doc(id).update(patch);
+    },
+
+    async putGuestSession(hash, data) {
+      await db.collection(STORAGELOOT_GUEST_SESSIONS).doc(hash).set(data);
+    },
+
+    async getGuestSession(hash) {
+      const snap = await db.collection(STORAGELOOT_GUEST_SESSIONS).doc(hash).get();
+      return snap.exists ? snap.data() : null;
+    },
+
+    async updateGuestSession(hash, patch) {
+      await db.collection(STORAGELOOT_GUEST_SESSIONS).doc(hash).update(patch);
+    },
+
+    async deleteGuestSession(hash) {
+      await db.collection(STORAGELOOT_GUEST_SESSIONS).doc(hash).delete();
     },
 
     // Active listings, newest first. Only active ones are public on the site.
@@ -399,7 +458,17 @@ function createStorageLootStore() {
     },
 
     deleteExpired: (nowMs) =>
-      deleteExpiredIn(db, [...Object.values(STORAGELOOT_AUTH), STORAGELOOT_BROWSER_CODES, STORAGELOOT_WEB_SESSIONS], nowMs),
+      deleteExpiredIn(
+        db,
+        [
+          ...Object.values(STORAGELOOT_AUTH),
+          STORAGELOOT_BROWSER_CODES,
+          STORAGELOOT_WEB_SESSIONS,
+          STORAGELOOT_GUEST_SESSIONS,
+          STORAGELOOT_GUEST_IPS,
+        ],
+        nowMs,
+      ),
   };
 }
 

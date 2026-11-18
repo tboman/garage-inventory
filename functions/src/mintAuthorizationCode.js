@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const admin = require("firebase-admin");
 const { randomBytes } = require("node:crypto");
 const { fetchCimd, isCimdClientId } = require("./cimd");
@@ -12,6 +13,7 @@ exports.mintAuthorizationCode = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
   }
+  refuseGuests(request.auth);
 
   const data = request.data || {};
   const clientId = data.client_id;

@@ -2,6 +2,20 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // StorageLoot guests write to sellers without signing in with Google: the
+    // poppyStorageloot function signs them in with a Firebase custom token
+    // (ids sla_… for browsers, and the same rules would hold for any other).
+    // Nothing else in this project uses custom tokens. Guests may take part in
+    // conversations and nothing else, so everything outside them asks for
+    // member(), a signed-in person who is not a guest.
+    function isGuest() {
+      return request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+
+    function member() {
+      return request.auth != null && !isGuest();
+    }
+
     // An inventory owner lists the emails they share with; the viewer's own
     // verified Google address on their ID token is matched against that list.
     // Emails rather than uids because nobody can look up another person's uid.
@@ -15,15 +29,15 @@ service cloud.firestore {
 
     match /users/{userId}/items/{itemId} {
       // Sharing grants read only; writing stays with the owner.
-      allow read: if request.auth != null
+      allow read: if member()
         && (request.auth.uid == userId || sharedWith(userId));
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if member() && request.auth.uid == userId;
     }
 
     match /users/{userId}/sharing/{docId} {
       // Only the owner sees or edits their share list. Rule get() calls run with
       // full privileges, so viewers never need read access here.
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if member() && request.auth.uid == userId;
     }
 
     // Reverse index so a recipient can discover who shared with them, which they
@@ -31,21 +45,21 @@ service cloud.firestore {
     // recipient's address, one document per sharer.
     match /share_index/{email}/owners/{ownerUid} {
       // Only the person whose address keys this branch can read it.
-      allow read: if request.auth != null
+      allow read: if member()
         && request.auth.token.email_verified == true
         && request.auth.token.email.lower() == email;
       // The document id is the sharer's uid, so only they can add or change
       // their own entry, and ownerEmail is pinned to their token so an entry
       // cannot claim to come from someone else.
-      allow create, update: if request.auth != null
+      allow create, update: if member()
         && request.auth.uid == ownerUid
         && request.resource.data.ownerEmail == request.auth.token.email.lower()
         && request.resource.data.keys().hasOnly(['ownerEmail', 'ownerName', 'sharedAt']);
-      allow delete: if request.auth != null && request.auth.uid == ownerUid;
+      allow delete: if member() && request.auth.uid == ownerUid;
     }
 
     match /users/{userId}/integrations/{provider} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if member() && request.auth.uid == userId;
       allow write: if false;
     }
 
@@ -135,6 +149,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // StorageLoot guests: accounts, browser guests' cookie sessions, and the
+    // count of new guests per network. Server-side only.
+    match /storageloot_accounts/{accountId} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_guest_sessions/{hash} {
+      allow read, write: if false;
+    }
+
+    match /storageloot_guest_ip/{hash} {
+      allow read, write: if false;
+    }
+
     // ---- StorageLoot messages ------------------------------------------------
     // One two-way conversation per buyer per listing, id `{listingId}_{buyerUid}`.
     // The buyer starts it, with its first message, in one batched write. The
@@ -162,7 +190,7 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.keys().hasOnly(['listingId', 'listingTitle', 'listingPhoto', 'sellerId',
              'sellerDisplayName', 'buyerId', 'buyerDisplayName', 'participants', 'createdAt',
-             'lastMessageAt', 'lastMessageText', 'lastSenderId', 'sellerReadAt', 'buyerReadAt'])
+             'lastMessageAt', 'lastMessageText', 'lastSenderId', 'sellerReadAt', 'buyerReadAt', 'buyerGuest'])
         && request.resource.data.listingId is string
         && conversationId == request.resource.data.listingId + '_' + request.auth.uid
         && request.resource.data.buyerId == request.auth.uid
@@ -183,7 +211,10 @@ service cloud.firestore {
         && request.resource.data.lastMessageText is string
         && request.resource.data.lastMessageText.size() <= 140
         && request.resource.data.buyerReadAt == request.time
-        && request.resource.data.sellerReadAt == null;
+        && request.resource.data.sellerReadAt == null
+        && (isGuest()
+            ? request.resource.data.buyerGuest == true
+            : !('buyerGuest' in request.resource.data));
 
       // A participant posts (the last* fields) or marks their own side read.
       allow update: if request.auth != null
@@ -255,7 +286,7 @@ service cloud.firestore {
     // requests are counted by the onListingRequest function, never by clients.
     match /listings/{listingId}/marketplaces/{platform} {
       function isSeller() {
-        return request.auth != null && request.auth.uid == listingData(listingId).sellerId;
+        return member() && request.auth.uid == listingData(listingId).sellerId;
       }
 
       function validMarketplace(d) {
@@ -281,7 +312,7 @@ service cloud.firestore {
 
     match /listings/{listingId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if member()
         && request.resource.data.sellerId == request.auth.uid
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 120
@@ -293,13 +324,13 @@ service cloud.firestore {
         && request.resource.data.category in ['tools', 'electronics', 'furniture', 'sports', 'automotive', 'household', 'clothing', 'other']
         && request.resource.data.status in ['active', 'sold', 'expired', 'draft']
         && request.resource.data.photos.size() <= 10;
-      allow update: if request.auth != null && resource.data.sellerId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.sellerId == request.auth.uid;
+      allow update: if member() && resource.data.sellerId == request.auth.uid;
+      allow delete: if member() && resource.data.sellerId == request.auth.uid;
     }
 
     match /groups/{groupId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if member()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
@@ -307,7 +338,7 @@ service cloud.firestore {
         && request.resource.data.type in ['container', 'box', 'storage', 'garage', 'custom']
         && (!('description' in request.resource.data) || (request.resource.data.description is string && request.resource.data.description.size() <= 300))
         && (!('photo' in request.resource.data) || request.resource.data.photo == null || (request.resource.data.photo is string && request.resource.data.photo.size() <= 2000));
-      allow update: if request.auth != null
+      allow update: if member()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.name is string
@@ -316,12 +347,12 @@ service cloud.firestore {
         && request.resource.data.type in ['container', 'box', 'storage', 'garage', 'custom']
         && (!('description' in request.resource.data) || (request.resource.data.description is string && request.resource.data.description.size() <= 300))
         && (!('photo' in request.resource.data) || request.resource.data.photo == null || (request.resource.data.photo is string && request.resource.data.photo.size() <= 2000));
-      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow delete: if member() && resource.data.ownerId == request.auth.uid;
     }
 
     match /nursery_listings/{listingId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if member()
         && request.resource.data.sellerId == request.auth.uid
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 120
@@ -333,19 +364,19 @@ service cloud.firestore {
         && request.resource.data.category in ['plants', 'seeds', 'tools', 'supplies', 'pots', 'furniture', 'other']
         && request.resource.data.status in ['active', 'sold', 'expired', 'draft']
         && request.resource.data.photos.size() <= 10;
-      allow update: if request.auth != null && resource.data.sellerId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.sellerId == request.auth.uid;
+      allow update: if member() && resource.data.sellerId == request.auth.uid;
+      allow delete: if member() && resource.data.sellerId == request.auth.uid;
     }
 
     match /nursery_groups/{groupId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if member()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 80;
-      allow update: if request.auth != null && resource.data.ownerId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow update: if member() && resource.data.ownerId == request.auth.uid;
+      allow delete: if member() && resource.data.ownerId == request.auth.uid;
     }
   }
 }

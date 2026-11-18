@@ -6,6 +6,7 @@ import {
   writeBatch, updateDoc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { isGuestUid } from './guestApi';
 
 export const TEXT_MAX = 2000;
 const PREVIEW_MAX = 140;
@@ -74,7 +75,10 @@ function messageFields(user, role, draft) {
 
 // A buyer writes about a listing: starts the conversation with this message,
 // or adds the message to the one they already have. Returns the conversation id.
-export async function sendToSeller(listing, user, draft) {
+// A guest is named `guestName` (or "Guest"), and the conversation is marked
+// as a guest's, which the rules require.
+export async function sendToSeller(listing, user, draft, { guestName } = {}) {
+  const guest = isGuestUid(user.uid);
   const id = conversationId(listing.id, user.uid);
   const msg = messageFields(user, 'buyer', draft);
   const preview = previewOf(msg);
@@ -94,7 +98,8 @@ export async function sendToSeller(listing, user, draft) {
       sellerId: listing.sellerId,
       sellerDisplayName: (listing.sellerDisplayName || 'Seller').slice(0, 100),
       buyerId: user.uid,
-      buyerDisplayName: (user.displayName || 'Buyer').slice(0, 100),
+      buyerDisplayName: (guest ? (guestName || '').trim() || 'Guest' : user.displayName || 'Buyer').slice(0, 100),
+      ...(guest ? { buyerGuest: true } : {}),
       participants: [listing.sellerId, user.uid],
       createdAt: serverTimestamp(),
       lastMessageAt: serverTimestamp(),

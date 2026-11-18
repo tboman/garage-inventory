@@ -12,14 +12,18 @@
 // is passed in as `authorizeAgent`. Everything else is the same everywhere.
 
 const { randomBytes } = require("node:crypto");
-const { PATHS, BROWSER_CODE_TTL_MS, WEB_SESSION_TTL_MS, WEB_COOKIE } = require("./config");
+const { PATHS, BROWSER_CODE_TTL_MS, WEB_SESSION_TTL_MS, WEB_COOKIE, GUEST_SESSION_TTL_MS } = require("./config");
 
 const esc = (value) =>
   String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// The one cookie holds up to two values: `j`, the secret that ties a join code
-// to this browser, and `w`, the web session's token. Both are base64url, with
-// or without a prefix, so "." and "~" are safe separators.
+// The one cookie holds up to three values: `j`, the secret that ties a join
+// code to this browser, `w`, the web session's token, and `a`, a
+// storageloot.shop guest's session token. All are base64url, with or without
+// a prefix, so "." and "~" are safe separators. Whoever writes the cookie
+// passes back the values it is not changing, so none is lost.
+const COOKIE_KEYS = ["j", "w", "a"];
+
 function readCookie(req) {
   const out = {};
   for (const pair of String(req.get("cookie") || "").split(";")) {
@@ -27,7 +31,7 @@ function readCookie(req) {
     if (at < 0 || pair.slice(0, at).trim() !== WEB_COOKIE) continue;
     for (const part of pair.slice(at + 1).trim().split("~")) {
       const [key, value] = part.split(".");
-      if ((key === "j" || key === "w") && /^[A-Za-z0-9_-]{20,200}$/.test(value || "")) out[key] = value;
+      if (COOKIE_KEYS.includes(key) && /^[A-Za-z0-9_-]{20,200}$/.test(value || "")) out[key] = value;
     }
   }
   return out;
@@ -35,11 +39,12 @@ function readCookie(req) {
 
 // Not readable by scripts, sent only over HTTPS, and never with a request
 // another site started. It cannot carry the __Host- prefix the spec's guides
-// suggest, because Hosting only forwards a cookie with this exact name.
+// suggest, because Hosting only forwards a cookie with this exact name. It
+// lasts as long as its longest-lived value: a year with a guest in it.
 function writeCookie(values) {
-  const parts = ["j", "w"].filter((k) => values[k]).map((k) => `${k}.${values[k]}`);
-  const life = parts.length ? Math.floor(WEB_SESSION_TTL_MS / 1000) : 0;
-  return `${WEB_COOKIE}=${parts.join("~")}; Path=/; Max-Age=${life}; Secure; HttpOnly; SameSite=Strict`;
+  const parts = COOKIE_KEYS.filter((k) => values[k]).map((k) => `${k}.${values[k]}`);
+  const lifeMs = values.a ? GUEST_SESSION_TTL_MS : parts.length ? WEB_SESSION_TTL_MS : 0;
+  return `${WEB_COOKIE}=${parts.join("~")}; Path=/; Max-Age=${Math.floor(lifeMs / 1000)}; Secure; HttpOnly; SameSite=Strict`;
 }
 
 const STYLE =
@@ -97,7 +102,7 @@ function createBrowserJoin({ store, now, send, hashToken, newToken, siteName, to
         `<form method="post" action="${PATHS.browserSession}">` +
         `<input type="hidden" name="code" value="${esc(code)}"><button>Continue</button></form>`,
     );
-    sendHtml(res, 200, html, { "Set-Cookie": writeCookie({ j: joinSecret, w: readCookie(req).w }) });
+    sendHtml(res, 200, html, { "Set-Cookie": writeCookie({ ...readCookie(req), j: joinSecret }) });
   }
 
   // Step 2. The agent vouches for the code, as `authorizeAgent` requires.
@@ -157,9 +162,14 @@ function createBrowserJoin({ store, now, send, hashToken, newToken, siteName, to
       created_at: now(),
       expires_at: now() + WEB_SESSION_TTL_MS,
     });
-    // Only the session now: the join secret has done its job.
+    // The session replaces the join secret, which has done its job. A guest
+    // account this browser has stays.
     res.status(303);
-    res.set({ "Cache-Control": "no-store", Location: PATHS.browse, "Set-Cookie": writeCookie({ w: token }) });
+    res.set({
+      "Cache-Control": "no-store",
+      Location: PATHS.browse,
+      "Set-Cookie": writeCookie({ a: readCookie(req).a, w: token }),
+    });
     res.end();
   }
 

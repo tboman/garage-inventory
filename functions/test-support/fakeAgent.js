@@ -110,7 +110,8 @@ function makeBrowser(call) {
   const browser = {
     cookie: undefined,
     async visit(method, path, options = {}) {
-      const r = await call(method, path, { ...options, headers: browser.cookie ? { cookie: browser.cookie } : {} });
+      const headers = { ...(options.headers || {}), ...(browser.cookie ? { cookie: browser.cookie } : {}) };
+      const r = await call(method, path, { ...options, headers });
       if (r.headers["Set-Cookie"]) browser.cookie = r.headers["Set-Cookie"].split(";")[0];
       return r;
     },

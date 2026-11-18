@@ -46,7 +46,13 @@ test.beforeEach(async () => {
   });
 });
 
-const as = (uid) => env.authenticatedContext(uid).firestore();
+// People sign in with Google. The test library's default token says
+// "custom", which is how StorageLoot guests sign in, so say so explicitly.
+const as = (uid) =>
+  env.authenticatedContext(uid, { firebase: { sign_in_provider: "google.com", identities: {} } }).firestore();
+const asGuest = (uid) =>
+  env.authenticatedContext(uid, { sl_guest: true, firebase: { sign_in_provider: "custom", identities: {} } }).firestore();
+const GUEST = "sla_AAAAAAAAAAAAAAAAAAAAAA";
 
 function conversation(overrides = {}) {
   return {
@@ -208,4 +214,47 @@ test("marketplace placeholders: the seller only, and never the request count", a
   );
   await assertSucceeds(updateDoc(ref(as(SELLER), "ebay"), { status: "planned", updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref(as(SELLER), "ebay"), { requestCount: 0, updatedAt: serverTimestamp() }));
+});
+
+test("guests: a guest writes to a seller, and its conversation says it is a guest", async () => {
+  const id = `${LISTING}_${GUEST}`;
+  const guestConvo = (o = {}) =>
+    conversation({ buyerId: GUEST, buyerDisplayName: "Guest", participants: [SELLER, GUEST], lastSenderId: GUEST, ...o });
+  // Without buyerGuest, or with it false, a guest may not start one.
+  await assertFails(start(asGuest(GUEST), guestConvo(), message(GUEST, "buyer"), id));
+  await assertFails(start(asGuest(GUEST), guestConvo({ buyerGuest: false }), message(GUEST, "buyer"), id));
+  await assertSucceeds(start(asGuest(GUEST), guestConvo({ buyerGuest: true }), message(GUEST, "buyer"), id));
+  await assertSucceeds(getDoc(doc(asGuest(GUEST), "conversations", id)));
+  // The seller reads and replies; the guest reads the reply.
+  await assertSucceeds(getDoc(doc(as(SELLER), "conversations", id)));
+  await assertSucceeds(
+    setDoc(doc(as(SELLER), "conversations", id, "messages", "s1"), message(SELLER, "seller", { kind: "reply", text: "Yes" })),
+  );
+  await assertSucceeds(getDocs(collection(asGuest(GUEST), "conversations", id, "messages")));
+  // Another guest sees none of it.
+  await assertFails(getDoc(doc(asGuest("sla_BBBBBBBBBBBBBBBBBBBBBB"), "conversations", id)));
+});
+
+test("guests: a Google account may not call itself a guest", async () => {
+  await assertFails(start(as(BUYER), conversation({ buyerGuest: true })));
+  await assertSucceeds(start(as(BUYER)));
+});
+
+test("guests: nothing outside conversations, not even their own space", async () => {
+  const g = asGuest(GUEST);
+  await assertFails(
+    setDoc(doc(g, "listings", "new"), {
+      sellerId: GUEST, title: "x", description: "", price: 100, condition: "good",
+      category: "tools", status: "active", photos: [],
+    }),
+  );
+  await assertFails(setDoc(doc(g, "groups", "g1"), { ownerId: GUEST, name: "Mine", type: "box" }));
+  await assertFails(setDoc(doc(g, "users", GUEST, "items", "i1"), { name: "thing" }));
+  await assertFails(getDoc(doc(g, "users", GUEST, "items", "i1")));
+  await assertFails(setDoc(doc(g, "nursery_listings", "n1"), { sellerId: GUEST }));
+  await assertFails(getDoc(doc(g, "storageloot_accounts", GUEST)));
+  await assertFails(getDoc(doc(g, "storageloot_guest_sessions", "x")));
+  // The same writes from a Google account still work.
+  await assertSucceeds(setDoc(doc(as(BUYER), "users", BUYER, "items", "i1"), { name: "thing" }));
+  await assertSucceeds(setDoc(doc(as(BUYER), "groups", "g1"), { ownerId: BUYER, name: "Mine", type: "box" }));
 });

@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) admin.initializeApp();
@@ -27,6 +28,7 @@ exports.exportListing = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in to create a listing.");
   }
+  refuseGuests(request.auth);
 
   const {
     title,

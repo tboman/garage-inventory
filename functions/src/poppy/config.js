@@ -129,6 +129,9 @@ const WEB_SESSION_TTL_MS = 60 * 60 * 1000;
 // Firebase Hosting passes exactly one cookie through to a function, and only
 // under this name, so it carries both the join secret and the web session.
 const WEB_COOKIE = "__session";
+// storageloot.shop guests (see STORAGELOOT.GUEST) keep their account in the
+// same cookie, for a year from their last visit.
+const GUEST_SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 // How far a Session JWT's `iat` may be from our clock, either way.
 const SESSION_WINDOW_S = 90;
@@ -185,6 +188,18 @@ const STORAGELOOT = {
   },
   // How many messages one connected agent may send in an hour.
   AGENT_MESSAGES_PER_HOUR: 30,
+  // Guests write to sellers without signing in. A browser guest is created
+  // when a person first sends a message, and its cookie is the credential. An
+  // agent guest is the person behind a verified Session from an approved
+  // agent (its client_id and the Session's user), with no access token.
+  GUEST: {
+    // New browser guests one IP address may create in an hour.
+    NEW_PER_IP_PER_HOUR: 5,
+    // Pages that may trade the guest cookie for a Firebase sign-in.
+    ORIGINS: ["https://storageloot.shop"],
+    // The app on the emulators, never in production.
+    EMULATOR_ORIGINS: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  },
 };
 
 module.exports = {
@@ -199,6 +214,7 @@ module.exports = {
   BROWSER_CODE_TTL_MS,
   WEB_SESSION_TTL_MS,
   WEB_COOKIE,
+  GUEST_SESSION_TTL_MS,
   ENFORCE_AGENT_IDENTITY,
   APPROVED_CLIENTS,
   APPROVED_CLIENTS_ONLY,

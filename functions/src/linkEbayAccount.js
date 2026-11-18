@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { refuseGuests } = require("./guest");
 const admin = require("firebase-admin");
 const { getSecret } = require("./secrets");
 
@@ -11,6 +12,7 @@ exports.linkEbayAccount = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in to link eBay.");
   }
+  refuseGuests(request.auth);
 
   const { code } = request.data || {};
   if (!code || typeof code !== "string") {
