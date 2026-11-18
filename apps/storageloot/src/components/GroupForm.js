@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import GooglePhotosPickerButton from './GooglePhotosPickerButton';
 
 const types = [
   { value: 'container', label: 'Container' },
@@ -118,15 +117,6 @@ export default function GroupForm({ initial = {}, onSubmit, submitLabel = 'Save'
                 : 'Optional. Defaults to a stock image based on type.'}
             </div>
             <div className="d-flex gap-2 mt-2 flex-wrap">
-              <GooglePhotosPickerButton
-                multiple={false}
-                onPicked={(files) => {
-                  if (files[0]) {
-                    setPhotoFile(files[0]);
-                    setRemoveExistingPhoto(false);
-                  }
-                }}
-              />
               {hasCustomImage && (
                 <button
                   type="button"

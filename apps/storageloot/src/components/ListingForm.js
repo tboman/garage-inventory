@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import PhotoPreview from './PhotoPreview';
-import GooglePhotosPickerButton from './GooglePhotosPickerButton';
 
 const conditions = [
   { value: 'new', label: 'New' },
@@ -198,7 +197,6 @@ export default function ListingForm({
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => fileInput.current.click()}>
               + Add Photos
             </button>
-            <GooglePhotosPickerButton onPicked={(files) => addFiles(files)} />
           </div>
         )}
         <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />

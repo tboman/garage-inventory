@@ -24,7 +24,7 @@ export async function getGoogleAccessToken() {
     return token;
   }
 
-  // Ask for Drive/Photos access on top of the existing sign-in. Reauthenticating
+  // Ask for Drive access on top of the existing sign-in. Reauthenticating
   // keeps the person on the same account instead of letting them switch.
   const result = auth.currentUser
     ? await reauthenticateWithPopup(auth.currentUser, googleMediaProvider)
